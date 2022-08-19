@@ -13,6 +13,7 @@ spr_boss = 14
 platform_cnt = 20
 starting_platform = 1
 actors = {}
+particles = {}
 platforms = {}
 dynamics = {}
 player = {}
@@ -66,7 +67,8 @@ function make_actor(s,x,y,h,w)
 		fh = false,
 		fv = false,
   bw = (w*8) / 2,
-  bh = (h*8) / 2
+  bh = (h*8) / 2,
+  frames = 0
 	}
 	add(actors,a)
 	return a
@@ -96,6 +98,17 @@ end
 function apply_angle_mag_dynamic(d,a,m)
  return apply_vector_dynamic(d,m*cos(a),m*sin(a))
 end
+
+function make_particle(x,y,c)
+ p = { x = x,
+       y = y,
+       c = c,
+       xvel = 0,
+       yvel = 0,
+       frames = 1}
+ add(particles,p)
+ return p
+end
 -->8
 --calculate
 
@@ -104,18 +117,20 @@ angle = 0
 function _update60()
  angle += 0.0005
  place_platforms_circle(cx,cy,56,sin(angle))
-
+ 
+ 
  if ((angle / 0.0005) % 20 == 0) then
   shot = make_dynamic(cx,cy)
   apply_angle_mag_dynamic(shot,angle*31.4,0.4)
  end
 
 	get_user_input()
-	move_to_platform()
+	update_player()
 	update_platform_spr()
 	move_dynamics()
 
 	check_dynamic_collisions()
+	update_particles()
 
 	record_button_states()
 end
@@ -124,28 +139,68 @@ function get_user_input()
  if btnp(0) then
   player.current_platform =
    ((player.current_platform-2) % #platforms) + 1
+  player.state = "jumping"
+  player.frames = 10
+  player.s = 34 
  end
  if btnp(1) then
   player.current_platform =
    (player.current_platform % #platforms) + 1
+  player.state = "jumping"
+  player.frames = 10
+  player.s = 34
+ end
+ if btnp(4) then
+  player.current_platform =
+   ((player.current_platform - (#platforms/2) - 1) % #platforms) + 1
+  player.state = "jumping"
+  player.frames = 10
+  player.s = 34
  end
 
 end
 
-function move_to_platform()
- local p = platforms[player.current_platform]
+function update_player()
+ if (player.state == "jumping") then
+  animate_to_platform()
+ elseif (player.state == "static") then
+  warp_to_platform()
+ end
+end
+
+function animate_to_platform()
+ local pcoords = get_platform_coords(player.current_platform)
+ player.x += (pcoords.x-player.x) / player.frames
+ player.y += (pcoords.y-player.y) / player.frames
+ player.frames -= 1
+ local c = get_actor_center(player)
+ gen_simple_particle(c.x, c.y)
+ if (player.frames <= 0) then
+  player.state = "static"
+  player.s = 33
+ end
+end
+
+function warp_to_platform()
+ local pcoords = get_platform_coords(player.current_platform)
+ player.x = pcoords.x
+ player.y = pcoords.y
+end
+
+function warp_to_platform()
+ local pcoords = get_platform_coords(player.current_platform)
+ player.x = pcoords.x
+ player.y = pcoords.y
+end
+
+function get_platform_coords(index)
+ local p = platforms[index]
  local pcx = p.x + (p.w*4)
  local pcy = p.y + (p.h*4)
  local angle = atan2(pcx-cx,pcy-cy)
  local dx = -player.platform_buffer * cos(angle)
  local dy = -player.platform_buffer * sin(angle)
-
- if (player.x != p.x + dx) then
-  player.x = p.x + dx
- end
- if (player.y != p.y + dy) then
-  player.y = p.y + dy
- end
+ return {x=p.x+dx,y=p.y+dy}
 end
 
 function update_platform_spr()
@@ -174,36 +229,51 @@ function move_dynamics()
 end
 
 function check_dynamic_collisions()
- local to_del = {}
  for d in all(dynamics) do
   if (do_actors_collide(player,d)) then
    sfx(0)
-   add(to_del,d)
+   del(dynamics, d)
+  	del(actors, d)
   end
- end
- for d in all(to_del) do
-  del(dynamics, d)
-  del(actors, d)
  end
 end
 
 function record_button_states()
  prev_button_states = btn()
 end
+
+function update_particles()
+ for p in all(particles) do
+  p.x += p.xvel
+  p.y += p.yvel
+  p.frames -= 1
+  if (p.frames <= 0) then
+   add(t0_del,p)
+   del(particles,p)
+  end
+ end
+end
 -->8
 --render
 
 function _draw()
 	cls()
+	draw_particles()
 	draw_actors()
-	print(player.current_platform,0,120)
+	print(#particles,0,0)
+	print(player.frames,0,120)
 	print(select_platform_spr(player.x, player.y, 63, 63),0,112)
-	line(cx,cy,((player.x+4)-cx)*2+cx,((player.y+4)-cy)*2+cy)
 end
 
 function draw_actors()
  for a in all(actors) do
   spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
+ end
+end
+
+function draw_particles()
+ for p in all(particles) do
+  pset(p.x,p.y,p.c)
  end
 end
 
@@ -267,6 +337,12 @@ function get_actor_center(a)
  return c
 end
 
+function gen_simple_particle(x,y)
+ p = make_particle(x,y,2)
+ apply_angle_mag_dynamic(p,rnd(1),0.1)
+ p.frames = 30
+end
+
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
 function random_platform(exclude_num)
  random = ceil(rnd(platform_cnt))
@@ -302,14 +378,15 @@ __gfx__
 0000000000a99a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000daadd000000ddaad
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ddd0000000000ddd
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000cccc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000c1cc1c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000c1cc1c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000cccccc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000c2222c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000cccc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000cccc0000eeee0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000000000c1cc1c00e1ee1e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000000000c1cc1c00e1ee1e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000000000cccccc00eeeeee000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000000000c2222c00e2222e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000cccc0000eeee0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __gff__
 0000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000100002f450264501f4501b45029450234501f4501b4501945025450214501c4502b4002840025400224001f4001c400184002a40024400214001c400194002f40030400304002b60031400314003140031400
+00050000091500a150131502615013150131501410007100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
