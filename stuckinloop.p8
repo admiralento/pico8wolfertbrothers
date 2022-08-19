@@ -36,7 +36,7 @@ function _init()
 
  boss = make_boss()
  shot = make_dynamic(cx,cy)
- apply_angle_mag_dynamic(shot,0.75,1)
+ apply_angle_mag_dynamic(shot,0.75,0.4)
 end
 
 function generate_platforms(n)
@@ -63,10 +63,12 @@ function make_actor(s,x,y,h,w)
 	 x = x,
 	 y = y,
 		s = s,
-		w = 1,
-		h = 1,
+		w = w,
+		h = h,
 		fh = false,
-		fv = false
+		fv = false,
+  bw = (w*8) / 2,
+  bh = (h*8) / 2
 	}
 	add(actors,a)
 	return a
@@ -129,7 +131,7 @@ function move_to_platform()
  local angle = atan2(pcx-cx,pcy-cy)
  local dx = -player.platform_buffer * cos(angle)
  local dy = -player.platform_buffer * sin(angle)
- 
+
  if (player.x != p.x + dx) then
   player.x = p.x + dx
  end
@@ -166,12 +168,29 @@ end
 function record_button_states()
  prev_button_states = btn()
 end
+
+function do_actors_collide(a,b)
+ local ac = get_actor_center(a)
+ local bc = get_actor_center(b)
+ return ((ac.x + a.bw > bc.x - b.bw) and
+    (ac.x - a.bw < bc.x + b.bw) and
+    (ac.y + a.bh > bc.y - b.bh) and
+    (ac.y - a.bh < bc.y + b.bh))
+end
+
+function get_actor_center(a)
+ c = {x = a.x + (a.w*4),
+      y = a.y + (a.h*4)}
+ return c
+end
 -->8
 --render
 
 function _draw()
 	cls()
 	draw_actors()
+	draw_actor_box(dynamics[1])
+	print(do_actors_collide(player,dynamics[1]),0,0)
 	print(player.current_platform,0,120)
 	print(select_platform_spr(player.x, player.y, 63, 63),0,112)
 	line(cx,cy,((player.x+4)-cx)*2+cx,((player.y+4)-cy)*2+cy)
@@ -181,6 +200,12 @@ function draw_actors()
  for a in all(actors) do
   spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
  end
+end
+
+function draw_actor_box(a)
+ local ac = get_actor_center(a)
+ rect(ac.x-a.bw,ac.y-a.bh,
+ 					ac.x+a.bw,ac.y+a.bh)
 end
 
 plat_top_spr = 1
