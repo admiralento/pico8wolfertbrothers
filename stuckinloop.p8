@@ -252,6 +252,20 @@ function place_platforms_circle(x,y,r,a)
  end
 end
 
+function do_actors_collide(a,b)
+ local ac = get_actor_center(a)
+ local bc = get_actor_center(b)
+ return ((ac.x + a.bw > bc.x - b.bw) and
+    (ac.x - a.bw < bc.x + b.bw) and
+    (ac.y + a.bh > bc.y - b.bh) and
+    (ac.y - a.bh < bc.y + b.bh))
+end
+
+function get_actor_center(a)
+ c = {x = a.x + (a.w*4),
+      y = a.y + (a.h*4)}
+ return c
+
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
 function random_platform(exclude_num)
  random = ceil(rnd(platform_cnt))
