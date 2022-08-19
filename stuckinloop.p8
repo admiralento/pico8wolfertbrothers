@@ -1,96 +1,126 @@
 pico-8 cartridge // http://www.pico-8.com
 version 36
 __lua__
+--startup
 
-platforms = 20
+--const
+spr_platform = 1
+spr_platform_final = 2
+spr_player = 33
+
+--global varibles
+platform_cnt = 20
 starting_platform = 1
+actors = {}
+platforms = {}
+player = {}
+
+prev_button_states = btn()
 
 function _init()
  cls()
+ generate_platforms(platform_cnt)
  
- for i=1,(platforms - 1) do
-  loc = i
-  y = 15
-  while i > 5 do
-  i -= 5
-  y += 30
-  end
-  make_actor(1,i*20,y,loc)
+ --place platforms
+ place_platforms_circle(63,63,56)
+ 
+ --change last platform spr
+ platforms[#platforms].s = spr_platform_final 
+ 
+ player = make_player(0,0)
+end
+
+function generate_platforms(n)
+ for i=1,n do
+  make_platform(0,0)
  end
- 
- x = actor_length() + 1
- y = 15
- while (x > 5) do
-  x -= 5
-  y += 30
- end
- make_actor(2,x*20,y,platforms)
- 
- make_actor(33,actor[starting_platform].x,actor[starting_platform].y,starting_platform)
 end
 
-
-function _update()
-move_player()
+function make_platform(x,y)
+ p = make_actor(spr_platform,x,y)
+ add(platforms, p)
 end
 
-
-function _draw()
-cls()
-draw_actors(actor)
-print(actor[21].loc)
+function make_player(x,y)
+ p = make_actor(spr_player,x,y)
+ p.state = "static"
+ p.current_platform = 1
+ return p
 end
--->8
 
-actor = {}
-
-function make_actor(act_type,x,y,loc)
+function make_actor(s,x,y)
 	a={
 	 x = x,
 	 y = y,
-		act_type = act_type,
-		
-		--for the player
-		loc = loc
+		s = s
 	}
-	
-	add(actor,a)
-	
+	add(actors,a)
 	return a
 end
+-->8
+--calculate
 
-
-function actor_length()
- actor_length = 0
- for i in all(actor) do
-  actor_length += 1
- end
- return actor_length
+function _update()
+	get_user_input()
+	move_to_platform()
+	record_button_states()	
 end
 
+function get_user_input()
+ if btnpc(0) then
+  player.current_platform =
+   ((player.current_platform-2) % #platforms) + 1
+ end
+ if btnpc(1) then
+  player.current_platform =
+   (player.current_platform % #platforms) + 1
+ end
+ 
+end
 
-function draw_actors(actor)
- for i in all(actor) do
-  spr(i.act_type,i.x,i.y)
+function move_to_platform()
+ local p = platforms[player.current_platform]
+ if (player.x != p.x) then
+  player.x = p.x
+ end
+ if (player.y != p.y) then
+  player.y = p.y
  end
 end
 
+function btnpc(index)
+ local mask = 1
+ for i=1, index do
+  mask *= 2
+ end
+ return (btn(index) and (band(prev_button_states,mask) == 0))
+end
 
-function move_player()
-	for player in all(actor) do
-	 if (player.act_type == 33) do
-	  if btn(⬅️,true) then player.loc -= 1 end
-	  if btn(➡️,true) then player.loc += 1 end
-	  if (player.loc > platforms) then player.loc = 1 end
-	  if (player.loc < 1) then player.loc = 20 end
-	  for platform in all(actor) do
-	   if (platform.loc == player.loc) do
-	    player.x = platform.x
-	    player.y = platform.y
-	   end
-	  end
-	 end
-	end
+function record_button_states()
+ prev_button_states = btn()
+end
+-->8
+--render
+
+function _draw()
+	cls()
+	draw_actors()
+	print(player.current_platform,0,120)
+end
+
+function draw_actors()
+ for a in all(actors) do
+  spr(a.s,a.x,a.y)
+ end
+end
+-->8
+--helper functions
+
+function place_platforms_circle(x,y,r,a)
+ for n=1,#platforms do
+  platforms[n].x = r*cos((n-1)/#platforms) + x
+  platforms[n].y = r*sin((n-1)/#platforms) + y
+ end
 end
 __gfx__
 00000000888888889999999900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -120,4 +150,4 @@ __gff__
 0000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
-010100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0001000000000000000e0501205014050190501b0501e050230502605000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
