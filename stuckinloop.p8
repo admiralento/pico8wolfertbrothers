@@ -16,6 +16,9 @@ actors = {}
 platforms = {}
 player = {}
 
+cx = 63
+cy = 63
+
 prev_button_states = btn()
 
 function _init()
