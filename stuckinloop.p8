@@ -7,6 +7,7 @@ __lua__
 spr_platform = 1
 spr_platform_final = 2
 spr_player = 33
+spr_player_dash = 34
 spr_boss = 14
 
 --global varibles
@@ -206,7 +207,7 @@ end
 function update_platform_spr()
  for i=1,#platforms do
   local p = platforms[i]
-  local u = select_platform_spr(p.x,p.y,cx,cy)
+  local u = select_platform_spr(p.x,p.y,cx,cy,1,2,3)
   p.s = u[1]
   p.fh = u[2]
   p.fv = u[3]
@@ -262,7 +263,6 @@ function _draw()
 	draw_actors()
 	print(#particles,0,0)
 	print(player.frames,0,120)
-	print(select_platform_spr(player.x, player.y, 63, 63),0,112)
 end
 
 function draw_actors()
@@ -283,32 +283,28 @@ function draw_actor_box(a)
  					ac.x+a.bw,ac.y+a.bh)
 end
 
-plat_top_spr = 1
-plat_side_spr = 2
-plat_diag_spr = 3
-
-function select_platform_spr(sx,sy,ox,oy)
+function select_platform_spr(sx,sy,ox,oy,spr_t,spr_s,spr_d)
  local angle = atan2(sx-ox,sy-oy)
  local output = {}
  -- {spr,fliph,flipv}
  if (angle < 1/16) then
-  output = {plat_side_spr,false,false}
+  output = {spr_s,false,false}
  elseif (angle < 3/16) then
-  output = {plat_diag_spr,false,true}
+  output = {spr_d,false,true}
  elseif (angle < 5/16) then
-  output = {plat_top_spr,false,true}
+  output = {spr_t,false,true}
  elseif (angle < 7/16) then
-  output = {plat_diag_spr,true,true}
+  output = {spr_d,true,true}
  elseif (angle < 9/16) then
-  output = {plat_side_spr,true,false}
+  output = {spr_s,true,false}
  elseif (angle < 11/16) then
-  output = {plat_diag_spr,true,false}
+  output = {spr_d,true,false}
  elseif (angle < 13/16) then
-  output = {plat_top_spr,false,false}
+  output = {spr_t,false,false}
  elseif (angle < 15/16) then
-  output = {plat_diag_spr,false,false}
+  output = {spr_d,false,false}
  else
-  output = {plat_side_spr,false,false}
+  output = {spr_s,false,false}
  end
  return output
 end
