@@ -35,8 +35,6 @@ function _init()
  player = make_player(0,0,1,1)
 
  boss = make_boss()
- shot = make_dynamic(cx,cy)
- apply_angle_mag_dynamic(shot,0.75,0.4)
 end
 
 function generate_platforms(n)
@@ -84,6 +82,7 @@ function make_dynamic(x,y)
  d = make_actor(17,x,y,1,1)
  d.xvel = 0
  d.yvel = 0
+ d.damage = 1
  add(dynamics,d)
  return d
 end
@@ -104,11 +103,19 @@ angle = 0
 function _update60()
  angle += 0.0005
  place_platforms_circle(cx,cy,56,sin(angle))
-
+ 
+ if ((angle / 0.0005) % 20 == 0) then
+  shot = make_dynamic(cx,cy)
+  apply_angle_mag_dynamic(shot,angle*31.4,0.4)
+ end
+ 
 	get_user_input()
 	move_to_platform()
 	update_platform_spr()
 	move_dynamics()
+	
+	check_dynamic_collisions()
+	
 	record_button_states()
 end
 
@@ -165,23 +172,22 @@ function move_dynamics()
  end
 end
 
+function check_dynamic_collisions()
+ local to_del = {}
+ for d in all(dynamics) do
+  if (do_actors_collide(player,d)) then
+   sfx(0)
+   add(to_del,d)
+  end
+ end
+ for d in all(to_del) do
+  del(dynamics, d)
+  del(actors, d)
+ end
+end
+
 function record_button_states()
  prev_button_states = btn()
-end
-
-function do_actors_collide(a,b)
- local ac = get_actor_center(a)
- local bc = get_actor_center(b)
- return ((ac.x + a.bw > bc.x - b.bw) and
-    (ac.x - a.bw < bc.x + b.bw) and
-    (ac.y + a.bh > bc.y - b.bh) and
-    (ac.y - a.bh < bc.y + b.bh))
-end
-
-function get_actor_center(a)
- c = {x = a.x + (a.w*4),
-      y = a.y + (a.h*4)}
- return c
 end
 -->8
 --render
@@ -189,8 +195,6 @@ end
 function _draw()
 	cls()
 	draw_actors()
-	draw_actor_box(dynamics[1])
-	print(do_actors_collide(player,dynamics[1]),0,0)
 	print(player.current_platform,0,120)
 	print(select_platform_spr(player.x, player.y, 63, 63),0,112)
 	line(cx,cy,((player.x+4)-cx)*2+cx,((player.y+4)-cy)*2+cy)
@@ -246,6 +250,21 @@ function place_platforms_circle(x,y,r,a)
   platforms[n].y = r*sin(((n-1)/#platforms)+a) + y
  end
 end
+
+function do_actors_collide(a,b)
+ local ac = get_actor_center(a)
+ local bc = get_actor_center(b)
+ return ((ac.x + a.bw > bc.x - b.bw) and
+    (ac.x - a.bw < bc.x + b.bw) and
+    (ac.y + a.bh > bc.y - b.bh) and
+    (ac.y - a.bh < bc.y + b.bh))
+end
+
+function get_actor_center(a)
+ c = {x = a.x + (a.w*4),
+      y = a.y + (a.h*4)}
+ return c
+end
 __gfx__
 00000000bbbbbbbbb300000000000b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000000003bb3bbb3bbb300000000bb30000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -274,4 +293,4 @@ __gff__
 0000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
-0001000000000000000e0501205014050190501b0501e050230502605000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000100002f450264501f4501b45029450234501f4501b4501945025450214501c4502b4002840025400224001f4001c400184002a40024400214001c400194002f40030400304002b60031400314003140031400
