@@ -38,8 +38,9 @@ function start_game()
  gamestate = "game"
  points = 0
 
- add_boss_queue("floating",120,3)
- add_boss_queue("mad",3,10)
+ add_boss_queue("floating",120,2)
+ add_boss_queue("fire laser",60,1)
+ add_boss_queue("floating",120,2)
 end
 
 function end_game()
@@ -341,7 +342,6 @@ function check_dynamic_collisions()
   if (do_actors_collide(player,d) and (d.damage > 0) and player.invincibleTimer <= 0) then
    del(dynamics, d)
   	del(actors, d)
-   player.invincibleTimer = 120;
    damage_player(d.damage)
   end
  end
@@ -353,7 +353,6 @@ function check_boss_collision()
    set_boss_action("hit",10,10)
    damage_boss(1)
   elseif (boss.state == "active") then
-   player.invincibleTimer = 120;
    damage_player(1)
   end
  end
@@ -362,6 +361,7 @@ end
 function damage_player(d)
  sfx(1)
  player.life -= d
+ player.invincibleTimer = 120;
 end
 
 function damage_boss(d)
@@ -494,6 +494,29 @@ function update_boss()
     retrieve_next_action()
    end
   end
+ elseif (boss.action == "fire laser") then
+  if (first_frame()) then
+   local t = get_platform_coords(ceil(rnd(#platforms)))
+   boss.cachex = t.x
+   boss.cachey = t.y
+   boss.direction = (ceil(rnd(2)) - 1.5)*2
+  end
+  if (move_to_next_frame()) then
+   boss.s = 46
+   sfx(5)
+   local angle = atan2(boss.cachex-boss.x,boss.cachey-boss.y) + 0.05*boss.direction*(boss.frames/boss.maxFrameCnt)
+   local c = get_actor_center(boss)
+   gen_laser(c.x,c.y,angle,7)
+   if (raycast_to_actor(c.x,c.y,angle,player) and player.invincibleTimer <= 0) then
+    damage_player(1)
+    retrieve_next_action()
+   end
+  else
+   if (move_to_next_cycle()) then
+   else
+    retrieve_next_action()
+   end
+  end
  else
   retrieve_next_action()
  end
@@ -524,7 +547,7 @@ function retrieve_next_action()
   return
  end
  while true do
-  local r = ceil(rnd(5))
+  local r = ceil(rnd(6))
   if (r == 1) then
    set_boss_action("floating",120,1)
    return
@@ -545,6 +568,10 @@ function retrieve_next_action()
   end
   if (r == 5) then
    set_boss_action("panting",160,2)
+   return
+  end
+  if (r == 6) then
+   set_boss_action("fire laser",120,1)
    return
   end
  end
@@ -580,8 +607,6 @@ function _draw()
 	if (gamestate == "game") then
 	 draw_particles()
 		draw_actors()
-		print(#dynamics,0,120)
-  print(#boss_queue,0,112)
 	 print("sCORE: "..tostring(points),0,5,10,11)
  elseif (gamestate == "menu") then
   rectfill(0,0,128,128,1)
@@ -706,6 +731,39 @@ function gen_firework_particle(x,y)
  end
 end
 
+function gen_laser(x,y,angle,c)
+ for i=1,128,2 do
+  p = make_particle(x+i*cos(angle),y+i*sin(angle),c)
+  apply_angle_mag_dynamic(p,rnd(1),0.4)
+  p.frames = 5
+ end
+end
+
+function raycast_to_actor(x,y,ang,a)
+ local c = get_actor_center(a)
+ return line_rect(x,y,x+128*cos(ang),y+128*sin(ang),
+   c.x - a.bw, c.y - a.bh, c.x + a.bw, c.y + a.bh)
+end
+
+function line_rect(x1,y1,x2,y2,x3,y3,x4,y4)
+ uA = line_line_collision(x1,y1,x2,y2,x3,y3,x4,y3) --top
+ uB = line_line_collision(x1,y1,x2,y2,x3,y4,x4,y4) --bottom
+ uC = line_line_collision(x1,y1,x2,y2,x3,y3,x3,y4) --left
+ uD = line_line_collision(x1,y1,x2,y2,x4,y3,x4,y4) --right
+ return (uA == true or uB == true or uC == true or uD == true)
+end
+
+function line_line_collision(x1,y1,x2,y2,x3,y3,x4,y4)
+ denom = (virtualize(y4-y3)*virtualize(x2-x1) - virtualize(x4-x3)*virtualize(y2-y1))
+ uA = (virtualize(x4-x3)*virtualize(y1-y3) - virtualize(y4-y3)*virtualize(x1-x3)) / denom
+ uB = (virtualize(x2-x1)*virtualize(y1-y3) - virtualize(y2-y1)*virtualize(x1-x3)) / denom
+ return (uA >= 0 and uA <= 1 and uB >= 0 and uB <= 1)
+end
+
+function virtualize(x)
+ return x / 128
+end
+
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
 function random_platform(exclude_num)
  random = ceil(rnd(platform_cnt))
@@ -765,3 +823,4 @@ __sfx__
 000c0000167201a7201d7001250031700005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00020000000000263008240026500e250036501425003650102400363009220036100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000200000865008650086500970009700097000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
