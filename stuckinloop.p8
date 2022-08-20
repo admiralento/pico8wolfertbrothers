@@ -353,6 +353,18 @@ function update_boss()
      retrieve_next_action()
     end
    end
+  elseif (boss.action == "go home") then
+   if (move_to_next_frame()) then
+    boss.s = 14
+    boss.x += (cx - boss.w*4 - boss.x) * (1 - (boss.frames / boss.maxFrameCnt))
+    boss.y += (cy - boss.h*4 - boss.y) * (1 - (boss.frames / boss.maxFrameCnt))
+   else
+    if (move_to_next_cycle()) then
+     set_boss_action("floating",120,1)
+    else
+     set_boss_action("floating",120,1)
+    end
+   end
   else
    retrieve_next_action()
   end
@@ -375,10 +387,29 @@ function move_to_next_cycle()
 end
 
 function retrieve_next_action()
- local r = ceil(rnd(3))
- if (r == 1) then set_boss_action("floating",120,1) end
- if (r == 2) then set_boss_action("mad",3,10) end
- if (r == 3) then set_boss_action("charging",20,5) end
+ while true do
+  local r = ceil(rnd(4))
+  if (r == 1) then
+   set_boss_action("floating",120,1)
+   return
+  end
+  if (r == 2) then
+   set_boss_action("mad",3,10)
+   return
+  end
+  if (r == 3) then
+   set_boss_action("charging",20,5)
+   return
+  end
+  if (r == 4) then
+   local c = get_actor_center(boss)
+   if (distance_to_center(c.x, c.y) > 30) then
+    set_boss_action("go home",40,1)
+    return
+   end
+   sfx(3)
+  end
+ end
 end
 
 function set_boss_action(action, maxFrameCnt, cycles)
@@ -471,6 +502,10 @@ function get_actor_center(a)
  return c
 end
 
+function distance_to_center(x,y)
+ return sqrt((cx - x)^2 + (cy - y)^2)
+end
+
 function gen_simple_particle(x,y)
  p = make_particle(x,y,2)
  apply_angle_mag_dynamic(p,rnd(1),0.1)
@@ -544,3 +579,4 @@ __sfx__
 000100002f450264501f4501b45029450234501f4501b4501945025450214501c4502b4002840025400224001f4001c4000e0001400024400214001c400194002f40030400304002b60031400314003140031400
 00050000091500a150131502615013150131501410007100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000001c05022050270502d0502e050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000200001a55020550285502b55033550355500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
