@@ -11,7 +11,7 @@ spr_player_dash = 34
 spr_boss = 14
 
 --global varibles
-platform_cnt = 20
+platform_cnt = 10
 starting_platform = 1
 points = 0
 actors = {}
@@ -62,7 +62,20 @@ function make_platform(x,y)
  p = make_actor(spr_platform,x,y,1,1)
  p.spriteset = {1,2,3}
  p.type = "grass"
+ p.state = "static"
  add(platforms, p)
+end
+
+function make_platform_random_insert(x,y)
+ p = make_actor(spr_platform,x,y,1,1)
+ p.spriteset = {1,2,3}
+ p.type = "grass"
+ p.state = "static"
+ local i = ceil(rnd(#platforms))
+ if (i <= player.current_platform) then
+  player.current_platform += 1
+ end
+ add(platforms, p, i)
 end
 
 function make_player(x,y)
@@ -86,7 +99,10 @@ function make_actor(s,x,y,h,w)
 		fv = false,
   bw = (w*8) / 2,
   bh = (h*8) / 2,
-  frames = 0
+  frames = 0,
+  maxFrameCnt = 0,
+  targetx = 0,
+  targety = 0
 	}
 	add(actors,a)
 	return a
@@ -156,8 +172,6 @@ function empty_list(list)
 end
 -->8
 --calculate
-
-angle = 0
 totalframes = 0
 
 function _update60()
@@ -165,17 +179,16 @@ function _update60()
  update_particles()
 
  if (gamestate == "game") then
-  angle += 0.0005
-	 place_platforms_circle(cx,cy,56+5*sin(angle*7),sin(angle))
 
-		get_user_input()
+  get_user_input()
+  remove_desert_if_touching()
+  update_all_platforms()
+
 		update_player()
 	 update_boss()
-		update_platform_spr()
 		move_dynamics()
 		check_dynamic_collisions()
 	 check_boss_collision()
-	 remove_desert_if_touching()
 		add_desert_if_missing()
   clean_up_dynamics()
 
@@ -259,10 +272,13 @@ function get_user_input()
  end
  if btnp(4) then
   player.current_platform =
-   ((player.current_platform - (#platforms/2) - 1) % #platforms) + 1
+   ((player.current_platform - (ceil(#platforms/2)) - 1) % #platforms) + 1
   player.state = "jumping"
   player.frames = 10
   player.s = 34
+ end
+ if (btnp(5)) then
+  add_platforms(10)
  end
 
 end
@@ -308,6 +324,26 @@ function warp_to_platform()
  player.y = pcoords.y
 end
 
+function update_all_platforms()
+ place_platforms_circle(cx,cy,56+5*sin(0.0005*totalframes*7),sin(0.0005*totalframes))
+ update_all_platform_spr()
+ for p in all(platforms) do
+  update_platform_animation(p)
+ end
+end
+
+function update_platform_animation(platform)
+ if (platform.state == "static") then
+  move_actor_center(platform.targetx,platform.targety,platform)
+ elseif (platform.state == "seeking") then
+  move_actor_dash_pause(platform,platform.targetx,platform.targety,platform.frames,platform.maxFrameCnt, true)
+  platform.frames -= 1
+  if (platform.frames <= 0) then
+   platform.state = "static"
+  end
+ end
+end
+
 function get_platform_coords(index)
  local p = platforms[index]
  local pcx = p.x + (p.w*4)
@@ -318,13 +354,32 @@ function get_platform_coords(index)
  return {x=p.x+dx,y=p.y+dy}
 end
 
-function update_platform_spr()
+function update_all_platform_spr()
  for i=1,#platforms do
   local p = platforms[i]
   local u = select_platform_spr(p.x,p.y,cx,cy,p.spriteset[1],p.spriteset[2],p.spriteset[3])
   p.s = u[1]
   p.fh = u[2]
   p.fv = u[3]
+ end
+end
+
+function place_platforms_circle(x,y,r,a)
+ for n=1,#platforms do
+  platforms[n].targetx = r*cos(((n-1)/#platforms)+a) + x - platforms[n].w*4
+  platforms[n].targety = r*sin(((n-1)/#platforms)+a) + y - platforms[n].h*4
+ end
+end
+
+function add_platforms(n)
+ for i=1,n do
+  local r = rnd(1)
+  make_platform_random_insert(cx+128*cos(r),cy+128*sin(r))
+ end
+ for i=1,#platforms do
+  platforms[i].state = "seeking"
+  platforms[i].frames = 100
+  platforms[i].maxFrameCnt = 100
  end
 end
 
@@ -789,13 +844,6 @@ end
 -->8
 --helper functions
 
-function place_platforms_circle(x,y,r,a)
- for n=1,#platforms do
-  platforms[n].x = r*cos(((n-1)/#platforms)+a) + x - platforms[n].w*4
-  platforms[n].y = r*sin(((n-1)/#platforms)+a) + y - platforms[n].h*4
- end
-end
-
 function do_actors_collide(a,b)
  local ac = get_actor_center(a)
  local bc = get_actor_center(b)
@@ -902,11 +950,11 @@ end
 function move_actor_linear(actor,tx,ty,frames,useCenter)
  if (useCenter) then
   local c = get_actor_center(actor)
-  actor.x += (tx - c.x) * (1 / (frames + 1))
-  actor.y += (ty - c.y) * (1 / (frames + 1))
+  actor.x += (tx - c.x) / frames
+  actor.y += (ty - c.y) / frames
  else
-  actor.x += (tx - actor.x) * (1 / (frames + 1))
-  actor.y += (ty - actor.y) * (1 / (frames + 1))
+  actor.x += (tx - actor.x) / frames
+  actor.y += (ty - actor.y) / frames
  end
 end
 
