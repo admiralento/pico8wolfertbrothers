@@ -144,7 +144,17 @@ function _update60()
 
 	record_button_states()
 
+ remove_desert_if_touching()
+
 	add_desert_if_missing()
+end
+
+function remove_desert_if_touching()
+ if (platforms[player.current_platform].type == "desert") then
+  platforms[player.current_platform].type = "grass"
+  platforms[player.current_platform].spriteset = {1,2,3}
+  sfx(2)
+ end
 end
 
 function check_for_desert()
@@ -165,6 +175,9 @@ end
 function change_platform_to_desert_sprites(p)
  p.spriteset = {4,5,6}
  p.type = "desert";
+ for i = 1,20 do
+  gen_desert_particle(p.x,p.y)
+ end
 end
 
 function make_random_platform_into_desert()
@@ -422,6 +435,16 @@ function gen_simple_particle(x,y)
  p = make_particle(x,y,2)
  apply_angle_mag_dynamic(p,rnd(1),0.1)
  p.frames = 30
+end
+
+function gen_desert_particle(x,y)
+ p = make_particle(x,y,9)
+ apply_angle_mag_dynamic(p,rnd(1),0.4)
+ p.frames = 20
+
+ p2 = make_particle(x,y,15)
+ apply_angle_mag_dynamic(p2,rnd(1),0.5)
+ p2.frames = 20
 end
 
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
