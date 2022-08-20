@@ -38,9 +38,8 @@ function start_game()
  gamestate = "game"
  points = 0
 
- add_boss_queue("floating",120,2)
- add_boss_queue("fire laser",60,1)
- add_boss_queue("floating",120,2)
+ add_boss_queue("floating",120,2,-1)
+ add_boss_queue("hint laser",3,10,-1)
 end
 
 function end_game()
@@ -97,8 +96,9 @@ function make_boss()
  b.state = "static"
  b.action = "static"
  b.frames = 0
- b.fullFrameCnt = 0
+ b.maxFrameCnt = 0
  b.cycles = 0
+ b.maxCycleCnt = 0
  b.cachex = 0
  b.cachey = 0
  b.life = 3
@@ -135,11 +135,15 @@ function make_particle(x,y,c)
  return p
 end
 
-function add_boss_queue(action, maxFrameCnt, cycles)
+function add_boss_queue(action, maxFrameCnt, cycles, index)
  bq = { action = action,
         maxFrameCnt = maxFrameCnt,
         cycles = cycles}
- add(boss_queue, bq)
+ if (index <= 0) then
+  add(boss_queue, bq)
+ else
+  add(boss_queue, bq, index)
+ end
  return bq
 end
 
@@ -392,6 +396,7 @@ function update_boss()
    boss.state = "active"
    boss.cachex = boss.x
    boss.cachey = boss.y
+   sfx(0)
   end
   if (move_to_next_frame()) then
    boss.s = 14
@@ -492,21 +497,47 @@ function update_boss()
   else
    if (move_to_next_cycle()) then
    else
-    add_boss_queue("mad",3,30)
+    add_boss_queue("hint laser",3,10,1)
+    add_boss_queue("hint laser",3,10,1)
+    add_boss_queue("hint laser",3,10,1)
+    retrieve_next_action()
+   end
+  end
+ elseif (boss.action == "hint laser") then
+  if (first_frame()) then
+   boss.state = "active"
+   boss.cachex = boss.x
+   boss.cachey = boss.y
+   if (first_cycle()) then
+    local t = get_platform_coords(ceil(rnd(#platforms)))
+    boss.targetx = t.x
+    boss.targety = t.y
+    boss.direction = (ceil(rnd(2)) - 1.5)*2
+    boss.angle = atan2(boss.targetx-boss.cachex,boss.targety-boss.cachey)
+   end
+  end
+  if (move_to_next_frame()) then
+   boss.s = 46
+   boss.x += cos(boss.frames/boss.maxFrameCnt)
+   local c = get_actor_center(boss)
+   gen_hint_laser(c.x,c.y,boss.angle,10)
+  else
+   if (move_to_next_cycle()) then
+    boss.x = boss.cachex
+    boss.y = boss.cachey
+   else
+    add_boss_queue("fire laser",120,1,1)
     retrieve_next_action()
    end
   end
  elseif (boss.action == "fire laser") then
   if (first_frame()) then
-   local t = get_platform_coords(ceil(rnd(#platforms)))
-   boss.cachex = t.x
-   boss.cachey = t.y
-   boss.direction = (ceil(rnd(2)) - 1.5)*2
+   boss.state = "active"
   end
   if (move_to_next_frame()) then
-   boss.s = 46
+   boss.s = 42
    sfx(5)
-   local angle = atan2(boss.cachex-boss.x,boss.cachey-boss.y) + 0.05*boss.direction*(boss.frames/boss.maxFrameCnt)
+   local angle = boss.angle + 0.05*boss.direction*(1-boss.frames/boss.maxFrameCnt)
    local c = get_actor_center(boss)
    gen_laser(c.x,c.y,angle,7)
    if (raycast_to_actor(c.x,c.y,angle,player) and player.invincibleTimer <= 0) then
@@ -526,6 +557,10 @@ end
 
 function first_frame()
  return (boss.frames == boss.maxFrameCnt)
+end
+
+function first_cycle()
+ return (boss.cycles == boss.maxCycleCnt)
 end
 
 function move_to_next_frame()
@@ -573,7 +608,7 @@ function retrieve_next_action()
    return
   end
   if (r == 6) then
-   set_boss_action("fire laser",120,1)
+   set_boss_action("hint laser",3,10)
    return
   end
  end
@@ -599,6 +634,7 @@ function set_boss_action(action, maxFrameCnt, cycles)
  boss.maxFrameCnt = maxFrameCnt
  boss.frames = maxFrameCnt
  boss.cycles = cycles
+ boss.maxCycleCnt = cycles
 end
 
 -->8
@@ -738,6 +774,15 @@ function gen_laser(x,y,angle,c)
   p = make_particle(x+i*cos(angle),y+i*sin(angle),c)
   apply_angle_mag_dynamic(p,rnd(1),0.4)
   p.frames = 5
+ end
+end
+
+function gen_hint_laser(x,y,angle,c)
+ for i=1,32 do
+  d = rnd(128)
+  p = make_particle(x+d*cos(angle),y+d*sin(angle),c)
+  apply_angle_mag_dynamic(p,rnd(1),0.4)
+  p.frames = 20
  end
 end
 
