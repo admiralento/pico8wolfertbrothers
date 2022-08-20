@@ -351,6 +351,7 @@ function check_boss_collision()
  if (do_actors_collide(player,boss) and player.invincibleTimer <= 0) then
   if (boss.state == "weak") then
    set_boss_action("hit",10,10)
+   points += 5;
    damage_boss(1)
   elseif (boss.state == "active") then
    damage_player(1)
@@ -491,6 +492,7 @@ function update_boss()
   else
    if (move_to_next_cycle()) then
    else
+    add_boss_queue("mad",3,30)
     retrieve_next_action()
    end
   end
