@@ -19,6 +19,7 @@ particles = {}
 platforms = {}
 dynamics = {}
 player = {}
+boss_queue = {}
 gamestate = "menu"
 
 cx = 63
@@ -36,6 +37,9 @@ function start_game()
  boss = make_boss()
  gamestate = "game"
  points = 0
+
+ add_boss_queue("floating",120,3)
+ add_boss_queue("mad",3,10)
 end
 
 function end_game()
@@ -130,6 +134,14 @@ function make_particle(x,y,c)
  return p
 end
 
+function add_boss_queue(action, maxFrameCnt, cycles)
+ bq = { action = action,
+        maxFrameCnt = maxFrameCnt,
+        cycles = cycles}
+ add(boss_queue, bq)
+ return bq
+end
+
 function empty_list(list)
  for i in all(list) do
   del(list,i)
@@ -158,6 +170,7 @@ function _update60()
 	 check_boss_collision()
 	 remove_desert_if_touching()
 		add_desert_if_missing()
+  clean_up_dynamics()
 
   if (player.life <= 0) then
    end_game()
@@ -212,6 +225,14 @@ end
 
 function make_random_platform_into_desert()
  change_platform_to_desert_sprites(random_platform(p.current_platform))
+end
+
+function clean_up_dynamics()
+ for d in all(dynamics) do
+  if (d.x < -128 or d.x > 256 or d.y < -128 or d.y > 256) then
+   del(dynamics,d)
+  end
+ end
 end
 
 function get_user_input()
@@ -318,7 +339,6 @@ end
 function check_dynamic_collisions()
  for d in all(dynamics) do
   if (do_actors_collide(player,d) and (d.damage > 0) and player.invincibleTimer <= 0) then
-   sfx(0)
    del(dynamics, d)
   	del(actors, d)
    player.invincibleTimer = 120;
@@ -333,7 +353,6 @@ function check_boss_collision()
    set_boss_action("hit",10,10)
    damage_boss(1)
   elseif (boss.state == "active") then
-   sfx(0)
    player.invincibleTimer = 120;
    damage_player(1)
   end
@@ -341,10 +360,12 @@ function check_boss_collision()
 end
 
 function damage_player(d)
+ sfx(1)
  player.life -= d
 end
 
 function damage_boss(d)
+ sfx(4)
  boss.life -= d
 end
 
@@ -494,6 +515,14 @@ function move_to_next_cycle()
 end
 
 function retrieve_next_action()
+ if (queued_boss_action()) then
+  return
+ end
+ local c = get_actor_center(boss)
+ if (distance_to_center(c.x, c.y) > 64) then
+  set_boss_action("go home",40,1)
+  return
+ end
  while true do
   local r = ceil(rnd(5))
   if (r == 1) then
@@ -509,7 +538,6 @@ function retrieve_next_action()
    return
   end
   if (r == 4) then
-   local c = get_actor_center(boss)
    if (distance_to_center(c.x, c.y) > 30) then
     set_boss_action("go home",40,1)
     return
@@ -520,6 +548,17 @@ function retrieve_next_action()
    return
   end
  end
+end
+
+function queued_boss_action()
+ if (#boss_queue > 0) then
+  set_boss_action(boss_queue[1].action,
+   boss_queue[1].maxFrameCnt,
+   boss_queue[1].cycles)
+  del(boss_queue, boss_queue[1])
+  return true
+ end
+ return false
 end
 
 function set_boss_state(state)
@@ -541,11 +580,8 @@ function _draw()
 	if (gamestate == "game") then
 	 draw_particles()
 		draw_actors()
-		print(boss.action,0,0)
-	 print(boss.frames,0,8)
-	 print(boss.maxFrameCnt,0,16)
-	 print(boss.cycles,0,24)
-		print(player.frames,0,120)
+		print(#dynamics,0,120)
+  print(#boss_queue,0,112)
 	 print("sCORE: "..tostring(points),0,5,10,11)
  elseif (gamestate == "menu") then
   rectfill(0,0,128,128,1)
@@ -727,3 +763,5 @@ __sfx__
 000100002f450264501f4501b45029450234501f4501b4501945025450214501c4502b4002840025400224001f4001c4000e0001400024400214001c400194002f40030400304002b60031400314003140031400
 00050000091500a150131502615013150131501410007100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000c0000167201a7201d7001250031700005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00020000000000263008240026500e250036501425003650102400363009220036100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
