@@ -127,12 +127,6 @@ function _update60()
  angle += 0.0005
  place_platforms_circle(cx,cy,56+5*sin(angle*5),sin(angle))
 
-
- if ((angle / 0.0005) % 20 == 0) then
-  shot = make_dynamic(cx,cy)
-  apply_angle_mag_dynamic(shot,angle*31.4,0.4)
- end
-
 	get_user_input()
 	update_player()
  update_boss()
@@ -306,50 +300,90 @@ end
 function update_boss()
  if (boss.state == "static") then
   if (boss.action == "floating") then
-   boss.s = 14
-   boss.x += 0.2*cos(boss.frames/boss.maxFrameCnt)
-   boss.y += 0.2*cos(2*boss.frames/boss.maxFrameCnt)
-   if (move_to_next_frame()) then retrieve_next_action() end
+   if (first_frame()) then
+    boss.cachex = boss.x
+    boss.cachey = boss.y
+   end
+   if (move_to_next_frame()) then
+    boss.s = 14
+    boss.x += 0.2*cos(boss.frames/boss.maxFrameCnt)
+    boss.y += 0.2*cos(2*boss.frames/boss.maxFrameCnt)
+   else
+    if (move_to_next_cycle()) then
+     boss.x = boss.cachex
+     boss.x = boss.cachey
+    else
+     retrieve_next_action()
+    end
+   end
   elseif (boss.action == "mad") then
-   boss.s = 46
-   boss.x += cos(boss.frames/boss.maxFrameCnt)
-   boss.frames -= 1
-   if (move_to_next_frame()) then retrieve_next_action() end
+   if (first_frame()) then
+    boss.cachex = boss.x
+    boss.cachey = boss.y
+   end
+   if (move_to_next_frame()) then
+    boss.s = 46
+    boss.x += cos(boss.frames/boss.maxFrameCnt)
+   else
+    if (move_to_next_cycle()) then
+     local c = get_actor_center(boss)
+     apply_angle_mag_dynamic(make_dynamic(c.x,c.y),rnd(1),0.4)
+     boss.x = boss.cachex
+     boss.y = boss.cachey
+    else
+     retrieve_next_action()
+    end
+   end
+  elseif (boss.action == "charging") then
+   if (first_frame()) then
+    boss.cachex = boss.x - 20 + rnd(40)
+    boss.cachey = boss.y - 20 + rnd(40)
+   end
+   if (move_to_next_frame()) then
+    boss.s = 46
+    boss.x += (boss.cachex - boss.x) * (1 - (boss.frames / boss.maxFrameCnt))
+    boss.y += (boss.cachey - boss.y) * (1 - (boss.frames / boss.maxFrameCnt))
+   else
+    if (move_to_next_cycle()) then
+     boss.cachex = boss.x - 20 + rnd(40)
+     boss.cachey = boss.y - 20 + rnd(40)
+    else
+     retrieve_next_action()
+    end
+   end
   else
    retrieve_next_action()
   end
  end
 end
 
+function first_frame()
+ return (boss.frames == boss.maxFrameCnt)
+end
+
 function move_to_next_frame()
- --returns true if cycles are complete
  boss.frames -= 1
- if (boss.frames <= 0) then
-  boss.x = boss.cachex
-  boss.y = boss.cachey
-  if (boss.cycles <= 0) then
-   return true
-  else
-   boss.cycles -= 1
-   boss.frames = boss.maxFrameCnt
-  end
- end
- return false
+ return (boss.frames > 0)
+end
+
+function move_to_next_cycle()
+ boss.cycles -= 1
+ boss.frames = boss.maxFrameCnt
+ return (boss.cycles > 0)
 end
 
 function retrieve_next_action()
- sfx(2)
- local r = ceil(rnd(2))
+ local r = ceil(rnd(3))
  if (r == 1) then set_boss_action("floating",120,1) end
  if (r == 2) then set_boss_action("mad",3,10) end
+ if (r == 3) then set_boss_action("charging",20,5) end
 end
 
 function set_boss_action(action, maxFrameCnt, cycles)
  boss.action = action
  boss.maxFrameCnt = maxFrameCnt
+ boss.frames = maxFrameCnt
  boss.cycles = cycles
- boss.cachex = boss.x
- boss.cachey = boss.y
 end
 
 -->8
@@ -359,7 +393,10 @@ function _draw()
 	cls()
 	draw_particles()
 	draw_actors()
-	print(#particles,0,0)
+	print(boss.action,0,0)
+ print(boss.frames,0,8)
+ print(boss.maxFrameCnt,0,16)
+ print(boss.cycles,0,24)
 	print(player.frames,0,120)
 end
 
