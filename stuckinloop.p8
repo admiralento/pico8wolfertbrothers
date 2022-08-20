@@ -35,6 +35,7 @@ function start_game()
  player = make_player(0,0,1,1)
  boss = make_boss()
  gamestate = "game"
+ points = 0
 end
 
 function end_game()
