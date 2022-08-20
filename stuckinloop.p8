@@ -126,7 +126,7 @@ end
 
 function start_game()
  generate_platforms(platform_cnt,1,1)
- place_platforms_circle(63,63,56,0)
+
  player = make_player(0,0,1,1)
  boss = make_boss()
  gamestate = "game"
@@ -430,8 +430,8 @@ end
 
 function place_platforms_circle(x,y,r,a)
  for n=1,#platforms do
-  platforms[n].targetx = r*cos(((n-1)/#platforms)+a) + x - platforms[n].w*4
-  platforms[n].targety = r*sin(((n-1)/#platforms)+a) + y - platforms[n].h*4
+  platforms[n].targetx = r*cos(((n-1)/#platforms)+a) + x
+  platforms[n].targety = r*sin(((n-1)/#platforms)+a) + y
  end
 end
 
