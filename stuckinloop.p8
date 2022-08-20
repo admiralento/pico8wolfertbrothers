@@ -39,6 +39,8 @@ function start_game()
  points = 0
 
  add_boss_queue("floating",120,2,-1)
+ add_boss_queue("dash to platform",80,1,-1)
+ add_boss_queue("dash to next platform",8,#platforms,-1)
 end
 
 function end_game()
@@ -466,6 +468,10 @@ function update_boss()
   end
  elseif (boss.action == "dash to next platform") then
   if (first_frame()) then
+   if (first_cycle()) then
+    local c = get_actor_center(boss)
+    boss.platform = find_closest_platform_index(c.x, c.y)
+   end
    boss.platform = ((boss.platform - 1 + boss.direction) % #platforms) + 1
    local t = get_platform_coords(boss.platform)
    boss.targetx = t.x
@@ -663,13 +669,15 @@ function retrieve_next_action()
    return
   end
   if (r == 7) then
-   set_boss_action("dash to platform",40,10)
-   set_boss_action("dash to next platform",5,#platforms)
+   set_boss_action("dash to platform",80,1)
+   add_boss_queue("dash to next platform",8,#platforms,-1)
    return
   end
   if (r == 8) then
-   set_boss_action("ring run",160,1)
-   return
+   if (distance_to_center(c.x, c.y) > 30) then
+    set_boss_action("ring run",160,1)
+    return
+   end
   end
  end
 end
@@ -804,7 +812,11 @@ function get_actor_center(a)
 end
 
 function distance_to_center(x,y)
- return sqrt((cx - x)^2 + (cy - y)^2)
+ return distance(cx,cy,x,y)
+end
+
+function distance(x1,y1,x2,y2)
+ return sqrt((x2 - x1)^2 + (y2 - y1)^2)
 end
 
 function gen_simple_particle(x,y)
@@ -929,6 +941,21 @@ function move_actor_dash_pause(actor,tx,ty,frames,maxframes,useCenter)
   actor.x += (tx - actor.x) * (1 - (frames / maxframes))
   actor.y += (ty - actor.y) * (1 - (frames / maxframes))
  end
+end
+
+function find_closest_platform_index(x,y)
+ -- returns the closest platform, based on the platforms's center
+ local index = 1
+ local hs = 256
+ for p=1,#platforms do
+  local c = get_actor_center(platforms[p])
+  local uA = distance(c.x,c.y,x,y)
+  if (uA < hs) then
+   hs = uA
+   index = p
+  end
+ end
+ return index
 end
 
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
