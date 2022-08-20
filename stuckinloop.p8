@@ -19,6 +19,7 @@ particles = {}
 platforms = {}
 dynamics = {}
 player = {}
+gamestate = "menu"
 
 cx = 63
 cy = 63
@@ -26,18 +27,23 @@ cy = 63
 prev_button_states = btn()
 
 function _init()
- cls()
+end
+
+function start_game()
  generate_platforms(platform_cnt,1,1)
-
- --place platforms
  place_platforms_circle(63,63,56,0)
-
- --change last platform spr
- platforms[#platforms].s = spr_platform_final
-
  player = make_player(0,0,1,1)
-
  boss = make_boss()
+ gamestate = "game"
+end
+
+function end_game()
+ platforms = {}
+ actors = {}
+ player = {}
+ boss = {}
+ dynamics = {}
+ gamestate = "end"
 end
 
 function generate_platforms(n)
@@ -58,6 +64,8 @@ function make_player(x,y)
  p.state = "static"
  p.current_platform = 1
  p.platform_buffer = 8
+ p.invincibleTimer = 0
+ p.life = 3
  return p
 end
 
@@ -119,35 +127,56 @@ function make_particle(x,y,c)
  add(particles,p)
  return p
 end
+
+function empty_list(list)
+ for i in all(list) do
+  del(list,i)
+ end
+end
 -->8
 --calculate
 
 angle = 0
+totalframes = 0
 
 function _update60()
- angle += 0.0005
- place_platforms_circle(cx,cy,56+5*sin(angle*5),sin(angle))
+ totalframes += 1
+ update_particles()
+ if (gamestate == "game") then
+  angle += 0.0005
+	 place_platforms_circle(cx,cy,56+5*sin(angle*5),sin(angle))
 
+		get_user_input()
+		update_player()
+	 update_boss()
+		update_platform_spr()
+		move_dynamics()
 
- if ((angle / 0.0005) % 20 == 0) then
-  shot = make_dynamic(cx,cy)
-  apply_angle_mag_dynamic(shot,angle*31.4,0.4)
+		check_dynamic_collisions()
+	 check_boss_collision()
+
+		record_button_states()
+
+	 remove_desert_if_touching()
+
+		add_desert_if_missing()
+
+  if (player.life <= 0) then
+   end_game()
+  end
+
+ elseif (gamestate == "menu") then
+  if(btn() > 0) then
+   start_game()
+  end
+ elseif (gamestate == "end") then
+  if (totalframes % 10 == 0) then
+   gen_firework_particle(rnd(128),rnd(128))
+  end
+  if(btn(❎) and btn(🅾️)) then
+   start_game()
+  end
  end
-
-	get_user_input()
-	update_player()
- update_boss()
-	update_platform_spr()
-	move_dynamics()
-
-	check_dynamic_collisions()
-	update_particles()
-
-	record_button_states()
-
- remove_desert_if_touching()
-
-	add_desert_if_missing()
 end
 
 function remove_desert_if_touching()
@@ -217,6 +246,14 @@ function update_player()
  elseif (player.state == "static") then
   warp_to_platform()
  end
+ if (player.invincibleTimer > 0) then
+  if (player.invincibleTimer % 8 <= 3) then
+   player.s = 0
+  else
+   player.s = 35
+  end
+  player.invincibleTimer -= 1
+ end
 end
 
 function animate_to_platform()
@@ -281,12 +318,26 @@ end
 
 function check_dynamic_collisions()
  for d in all(dynamics) do
-  if (do_actors_collide(player,d)) then
+  if (do_actors_collide(player,d) and (d.damage > 0) and player.invincibleTimer <= 0) then
    sfx(0)
    del(dynamics, d)
   	del(actors, d)
+   player.invincibleTimer = 120;
+   damage_player(d.damage)
   end
  end
+end
+
+function check_boss_collision()
+ if (do_actors_collide(player,boss) and player.invincibleTimer <= 0) then
+  sfx(0)
+  player.invincibleTimer = 120;
+  damage_player(1)
+ end
+end
+
+function damage_player(d)
+ player.life -= d
 end
 
 function record_button_states()
@@ -308,50 +359,120 @@ end
 function update_boss()
  if (boss.state == "static") then
   if (boss.action == "floating") then
-   boss.s = 14
-   boss.x += 0.2*cos(boss.frames/boss.maxFrameCnt)
-   boss.y += 0.2*cos(2*boss.frames/boss.maxFrameCnt)
-   if (move_to_next_frame()) then retrieve_next_action() end
+   if (first_frame()) then
+    boss.cachex = boss.x
+    boss.cachey = boss.y
+   end
+   if (move_to_next_frame()) then
+    boss.s = 14
+    boss.x += 0.2*cos(boss.frames/boss.maxFrameCnt)
+    boss.y += 0.2*cos(2*boss.frames/boss.maxFrameCnt)
+   else
+    if (move_to_next_cycle()) then
+     boss.x = boss.cachex
+     boss.x = boss.cachey
+    else
+     retrieve_next_action()
+    end
+   end
   elseif (boss.action == "mad") then
-   boss.s = 46
-   boss.x += cos(boss.frames/boss.maxFrameCnt)
-   boss.frames -= 1
-   if (move_to_next_frame()) then retrieve_next_action() end
+   if (first_frame()) then
+    boss.cachex = boss.x
+    boss.cachey = boss.y
+   end
+   if (move_to_next_frame()) then
+    boss.s = 46
+    boss.x += cos(boss.frames/boss.maxFrameCnt)
+   else
+    if (move_to_next_cycle()) then
+     local c = get_actor_center(boss)
+     apply_angle_mag_dynamic(make_dynamic(c.x,c.y),rnd(1),0.4)
+     boss.x = boss.cachex
+     boss.y = boss.cachey
+    else
+     retrieve_next_action()
+    end
+   end
+  elseif (boss.action == "charging") then
+   if (first_frame()) then
+    boss.cachex = boss.x - 20 + rnd(40)
+    boss.cachey = boss.y - 20 + rnd(40)
+   end
+   if (move_to_next_frame()) then
+    boss.s = 46
+    boss.x += (boss.cachex - boss.x) * (1 - (boss.frames / boss.maxFrameCnt))
+    boss.y += (boss.cachey - boss.y) * (1 - (boss.frames / boss.maxFrameCnt))
+   else
+    if (move_to_next_cycle()) then
+     boss.cachex = boss.x - 20 + rnd(40)
+     boss.cachey = boss.y - 20 + rnd(40)
+    else
+     retrieve_next_action()
+    end
+   end
+  elseif (boss.action == "go home") then
+   if (move_to_next_frame()) then
+    boss.s = 14
+    boss.x += (cx - boss.w*4 - boss.x) * (1 - (boss.frames / boss.maxFrameCnt))
+    boss.y += (cy - boss.h*4 - boss.y) * (1 - (boss.frames / boss.maxFrameCnt))
+   else
+    if (move_to_next_cycle()) then
+     set_boss_action("floating",120,1)
+    else
+     set_boss_action("floating",120,1)
+    end
+   end
   else
    retrieve_next_action()
   end
  end
 end
 
+function first_frame()
+ return (boss.frames == boss.maxFrameCnt)
+end
+
 function move_to_next_frame()
- --returns true if cycles are complete
  boss.frames -= 1
- if (boss.frames <= 0) then
-  boss.x = boss.cachex
-  boss.y = boss.cachey
-  if (boss.cycles <= 0) then
-   return true
-  else
-   boss.cycles -= 1
-   boss.frames = boss.maxFrameCnt
-  end
- end
- return false
+ return (boss.frames > 0)
+end
+
+function move_to_next_cycle()
+ boss.cycles -= 1
+ boss.frames = boss.maxFrameCnt
+ return (boss.cycles > 0)
 end
 
 function retrieve_next_action()
- sfx(2)
- local r = ceil(rnd(2))
- if (r == 1) then set_boss_action("floating",120,1) end
- if (r == 2) then set_boss_action("mad",3,10) end
+ while true do
+  local r = ceil(rnd(4))
+  if (r == 1) then
+   set_boss_action("floating",120,1)
+   return
+  end
+  if (r == 2) then
+   set_boss_action("mad",3,10)
+   return
+  end
+  if (r == 3) then
+   set_boss_action("charging",20,5)
+   return
+  end
+  if (r == 4) then
+   local c = get_actor_center(boss)
+   if (distance_to_center(c.x, c.y) > 30) then
+    set_boss_action("go home",40,1)
+    return
+   end
+  end
+ end
 end
 
 function set_boss_action(action, maxFrameCnt, cycles)
  boss.action = action
  boss.maxFrameCnt = maxFrameCnt
+ boss.frames = maxFrameCnt
  boss.cycles = cycles
- boss.cachex = boss.x
- boss.cachey = boss.y
 end
 
 -->8
@@ -359,10 +480,30 @@ end
 
 function _draw()
 	cls()
-	draw_particles()
-	draw_actors()
-	print(player.frames,0,120)
- print("sCORE: "..tostring(points),0,5,10,11)
+	if (gamestate == "game") then
+	 draw_particles()
+		draw_actors()
+		print(boss.action,0,0)
+	 print(boss.frames,0,8)
+	 print(boss.maxFrameCnt,0,16)
+	 print(boss.cycles,0,24)
+		print(player.frames,0,120)
+	 print("sCORE: "..tostring(points),0,5,10,11)
+ elseif (gamestate == "menu") then
+  rectfill(0,0,128,128,1)
+  for i=1,16 do
+   print("stuck in a loop",cx + 30*cos((i/16) + time()/4) - 25,cy + 30*sin((i/16) + time()/8) - 20,i)
+  end
+  print("press any key to start",20,100,0)
+ elseif (gamestate == "end") then
+  rectfill(0,0,128,128,2)
+  draw_particles()
+  for i=1,16 do
+   print("you got looped",cx + 30*cos((i/16) + time()/4) - 25,cy + 30*sin((i/16) + time()/8) - 20,i)
+  end
+  print("sCORE: "..tostring(points),40,85)
+  print("press ❎ and 🅾️ to play again",5,100,0)
+ end
 end
 
 function draw_actors()
@@ -413,8 +554,8 @@ end
 
 function place_platforms_circle(x,y,r,a)
  for n=1,#platforms do
-  platforms[n].x = r*cos(((n-1)/#platforms)+a) + x
-  platforms[n].y = r*sin(((n-1)/#platforms)+a) + y
+  platforms[n].x = r*cos(((n-1)/#platforms)+a) + x - platforms[n].w*4
+  platforms[n].y = r*sin(((n-1)/#platforms)+a) + y - platforms[n].h*4
  end
 end
 
@@ -433,6 +574,10 @@ function get_actor_center(a)
  return c
 end
 
+function distance_to_center(x,y)
+ return sqrt((cx - x)^2 + (cy - y)^2)
+end
+
 function gen_simple_particle(x,y)
  p = make_particle(x,y,2)
  apply_angle_mag_dynamic(p,rnd(1),0.1)
@@ -447,6 +592,24 @@ function gen_desert_particle(x,y)
  p2 = make_particle(x,y,15)
  apply_angle_mag_dynamic(p2,rnd(1),0.5)
  p2.frames = 20
+end
+
+function gen_firework_particle(x,y)
+ for i=1,50 do
+  p = make_particle(x,y,10)
+  apply_angle_mag_dynamic(p,rnd(1),0.4)
+  p.frames = 20 + rnd(20)
+ end
+ for i=1,100 do
+  p = make_particle(x,y,9)
+  apply_angle_mag_dynamic(p,rnd(1),0.6)
+  p.frames = 20 + rnd(20)
+ end
+ for i=1,150 do
+  p = make_particle(x,y,8)
+  apply_angle_mag_dynamic(p,rnd(1),0.8)
+  p.frames = 20 + rnd(20)
+ end
 end
 
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
@@ -484,12 +647,12 @@ __gfx__
 0000000000a99a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000daadd000000ddaad
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ddd0000000000ddd
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dd0000000
-0000000000cccc0000eeee000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88d000000
-000000000c1cc1c00e1ee1e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88d000000
-000000000c1cc1c00e1ee1e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111881110000
-000000000cccccc00eeeeee00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ddddd111111ddddd
-000000000c2222c00e2222e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88889111198888d
-0000000000cccc0000eeee0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d888928829888d0
+0000000000cccc0000eeee0000aaaa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88d000000
+000000000c1cc1c00e1ee1e00a1aa1a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88d000000
+000000000c1cc1c00e1ee1e00a1aa1a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000111881110000
+000000000cccccc00eeeeee00aaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000ddddd111111ddddd
+000000000c2222c00e2222e00a2222a000000000000000000000000000000000000000000000000000000000000000000000000000000000d88889111198888d
+0000000000cccc0000eeee0000aaaa00000000000000000000000000000000000000000000000000000000000000000000000000000000000d888928829888d0
 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d8892882988d00
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88888888d000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d88888888d000
