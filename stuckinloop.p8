@@ -11,7 +11,7 @@ spr_player_dash = 34
 spr_boss = 14
 
 --global varibles
-platform_cnt = 10
+platform_cnt = 20
 starting_platform = 1
 points = 0
 actors = {}
@@ -408,7 +408,6 @@ end
 function animate_all_platforms()
  for platform in all(platforms) do
   if (platform.state == "static") then
-<<<<<<< HEAD
    warp_platform_to_target(platform)
   elseif (platform.state == "seeking") then
    drift_platform_to_target(platform)
@@ -426,17 +425,6 @@ function drift_platform_to_target(platform)
  platform.frames -= 1
  if (platform.frames <= 0) then
   platform.state = "static"
-=======
-   move_actor_center(platform.targetx,platform.targety,platform)
-  elseif (platform.state == "seeking") then
-   move_actor_dash_pause(platform,platform.targetx,platform.targety,
-    platform.frames,platform.maxFrameCnt, true)
-   platform.frames -= 1
-   if (platform.frames <= 0) then
-    platform.state = "static"
-   end
-  end
->>>>>>> dc666d50b02d2bbf8fe67ba290cecf792319c578
  end
 end
 
