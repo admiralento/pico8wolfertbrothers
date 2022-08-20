@@ -272,6 +272,11 @@ end
 -->8
 --actor
 
+function set_actor_frames(actor,f)
+ actor.frames = f
+ actor.maxFrameCnt = f
+end
+
 function do_actors_collide(a,b)
  local ac = get_actor_center(a)
  local bc = get_actor_center(b)
@@ -391,8 +396,7 @@ function add_platforms(n)
  end
  for i=1,#platforms do
   platforms[i].state = "seeking"
-  platforms[i].frames = 100
-  platforms[i].maxFrameCnt = 100
+  set_actor_frames(platforms[i],100)
  end
 end
 
@@ -412,6 +416,21 @@ function animate_all_platforms()
   elseif (platform.state == "seeking") then
    drift_platform_to_target(platform)
   end
+
+  --example
+  -- if (isExploding) then
+      -- set spr dependent on platform.frames
+      -- play sound dependent on platform.frames
+      -- make explosion particles dependent on platform.frames
+      -- check for blast radius dependent on platform.frames
+      -- platform.frames -= 1
+      -- if frames hits zero, change to not exploding
+  -- end
+
+  -- blink in an ABAB pattern
+  -- if (platform.frames % 10 < 5) platform.s = EXPLODING_SPR_NUMBER
+  -- else platform.s = NORMAL_PLATFORM_SPR_NUMBER
+
  end
 end
 
@@ -1134,6 +1153,18 @@ function platform_bomb()
  --deal damage when the last sprite leaves
  --create particle effects
 end
+
+--suggestion from Ammon
+--add a variable to the platform class (platform.isExploding or something)
+--then go to the function animate_all_platforms() and and add an if statement
+--in here to check if it is a bomb.
+--Whatever sets this exploding varible to true should also set the platform.frames to something
+--using set_actor_frames()
+--then use those frames in animate_all_platforms() as a timer to animate the flashing, and trigger
+--the blast radius check. The boss uses this same system
+--but platform.state is important to either be "seeking" or "static"
+--if you want normal movement
+
 
 function bomb_index_list_creation(x)
  --creates a list of 5 platforms right next to each other
