@@ -39,7 +39,11 @@ function start_game()
  points = 0
 
  add_boss_queue("floating",120,2,-1)
- add_boss_queue("hint laser",3,10,-1)
+ add_boss_queue("charging",40,5,-1)
+ add_boss_queue("dash to platform",40,1,-1)
+ add_boss_queue("dash to next platform",10,#platforms,-1)
+ add_boss_queue("dash to platform",40,1,-1)
+ add_boss_queue("ring run",160,1,-1)
 end
 
 function end_game()
@@ -102,6 +106,7 @@ function make_boss()
  b.cachex = 0
  b.cachey = 0
  b.life = 3
+ b.platform = 0
  return b
 end
 
@@ -164,7 +169,7 @@ function _update60()
 
  if (gamestate == "game") then
   angle += 0.0005
-	 place_platforms_circle(cx,cy,56+5*sin(angle*5),sin(angle))
+	 place_platforms_circle(cx,cy,56+5*sin(angle*7),sin(angle))
 
 		get_user_input()
 		update_player()
@@ -396,7 +401,6 @@ function update_boss()
    boss.state = "active"
    boss.cachex = boss.x
    boss.cachey = boss.y
-   sfx(0)
   end
   if (move_to_next_frame()) then
    boss.s = 14
@@ -432,17 +436,72 @@ function update_boss()
  elseif (boss.action == "charging") then
   if (first_frame()) then
    boss.state = "active"
-   boss.cachex = boss.x - 20 + rnd(40)
-   boss.cachey = boss.y - 20 + rnd(40)
+   boss.cachex = boss.x + 20*cos(rnd())
+   boss.cachey = boss.y + 20*sin(rnd())
   end
   if (move_to_next_frame()) then
    boss.s = 46
-   boss.x += (boss.cachex - boss.x) * (1 - (boss.frames / boss.maxFrameCnt))
-   boss.y += (boss.cachey - boss.y) * (1 - (boss.frames / boss.maxFrameCnt))
+   move_actor_dash_pause(boss,boss.cachex,boss.cachey,boss.frames, boss.maxFrameCnt, false)
   else
    if (move_to_next_cycle()) then
-    boss.cachex = boss.x - 20 + rnd(40)
-    boss.cachey = boss.y - 20 + rnd(40)
+    boss.cachex = boss.x + 20*cos(rnd())
+    boss.cachey = boss.y + 20*sin(rnd())
+   else
+    retrieve_next_action()
+   end
+  end
+ elseif (boss.action == "dash to platform") then
+  if (first_frame()) then
+   local index = ceil(rnd(#platforms))
+   local t = get_platform_coords(index)
+   boss.targetx = t.x
+   boss.targety = t.y
+   boss.state = "active"
+   boss.platform = index
+   boss.direction = randDirection()
+  end
+  if (move_to_next_frame()) then
+   boss.s = 14
+   move_actor_linear(boss,boss.targetx,boss.targety,boss.frames,true)
+  else
+   if (move_to_next_cycle()) then
+   else
+    retrieve_next_action()
+   end
+  end
+ elseif (boss.action == "dash to next platform") then
+  if (first_frame()) then
+   boss.platform = ((boss.platform - 1 + boss.direction) % #platforms) + 1
+   local t = get_platform_coords(boss.platform)
+   boss.targetx = t.x
+   boss.targety = t.y
+   boss.state = "active"
+  end
+  if (move_to_next_frame()) then
+   boss.s = 14
+   local c = get_actor_center(boss)
+   move_actor_linear(boss,boss.targetx,boss.targety,boss.frames,true)
+  else
+   if (move_to_next_cycle()) then
+   else
+    retrieve_next_action()
+   end
+  end
+ elseif (boss.action == "ring run") then
+  if (first_frame()) then
+   local c = get_actor_center(boss)
+   boss.radius = distance_to_center(c.x,c.y)
+   boss.angle = atan2(c.x-cx,c.y-cy)
+  end
+  if (move_to_next_frame()) then
+   boss.s = 46
+   move_actor_center(
+    cx + boss.radius*cos(boss.angle + (1 - (boss.frames / boss.maxFrameCnt))),
+    cy + boss.radius*sin(boss.angle + (1 - (boss.frames / boss.maxFrameCnt))),
+    boss
+   )
+  else
+   if (move_to_next_cycle()) then
    else
     retrieve_next_action()
    end
@@ -453,8 +512,7 @@ function update_boss()
   end
   if (move_to_next_frame()) then
    boss.s = 14
-   boss.x += (cx - boss.w*4 - boss.x) * (1 - (boss.frames / boss.maxFrameCnt))
-   boss.y += (cy - boss.h*4 - boss.y) * (1 - (boss.frames / boss.maxFrameCnt))
+   move_actor_const_accel(boss,cx,cy,boss.frames, boss.maxFrameCnt, true)
   else
    if (move_to_next_cycle()) then
     set_boss_action("floating",120,1)
@@ -497,9 +555,6 @@ function update_boss()
   else
    if (move_to_next_cycle()) then
    else
-    add_boss_queue("hint laser",3,10,1)
-    add_boss_queue("hint laser",3,10,1)
-    add_boss_queue("hint laser",3,10,1)
     retrieve_next_action()
    end
   end
@@ -512,7 +567,7 @@ function update_boss()
     local t = get_platform_coords(ceil(rnd(#platforms)))
     boss.targetx = t.x
     boss.targety = t.y
-    boss.direction = (ceil(rnd(2)) - 1.5)*2
+    boss.direction = randDirection()
     boss.angle = atan2(boss.targetx-boss.cachex,boss.targety-boss.cachey)
    end
   end
@@ -551,6 +606,7 @@ function update_boss()
    end
   end
  else
+  sfx(0)
   retrieve_next_action()
  end
 end
@@ -611,6 +667,10 @@ function retrieve_next_action()
    set_boss_action("hint laser",3,10)
    return
   end
+  if (r == 6) then
+   dash("dash to ring",40,10)
+   return
+  end
  end
 end
 
@@ -637,6 +697,16 @@ function set_boss_action(action, maxFrameCnt, cycles)
  boss.maxCycleCnt = cycles
 end
 
+function move_actor_center(x,y,actor)
+ --move the actor to center on these coords
+ actor.x = x - (actor.w*4)
+ actor.y = y - (actor.h*4)
+end
+
+function convert_from_center_to_origin(x,y,actor)
+ return {x = x - (actor.w*4), y = y - (actor.h*4)}
+end
+
 -->8
 --render
 
@@ -645,6 +715,8 @@ function _draw()
 	if (gamestate == "game") then
 	 draw_particles()
 		draw_actors()
+  print(boss.action,0,16)
+  print(boss.platform,0,24)
 	 print("sCORE: "..tostring(points),0,5,10,11)
  elseif (gamestate == "menu") then
   rectfill(0,0,128,128,1)
@@ -811,6 +883,54 @@ function virtualize(x)
  return x / 128
 end
 
+function randDirection()
+ return ((ceil(rnd(2)) - 1.5)*2)
+end
+
+function move_actor_linear(actor,tx,ty,frames,useCenter)
+ if (useCenter) then
+  local c = get_actor_center(actor)
+  actor.x += (tx - c.x) * (1 / (frames + 1))
+  actor.y += (ty - c.y) * (1 / (frames + 1))
+ else
+  actor.x += (tx - actor.x) * (1 / (frames + 1))
+  actor.y += (ty - actor.y) * (1 / (frames + 1))
+ end
+end
+
+function move_actor_const_accel(actor,tx,ty,frames,maxframes,useCenter)
+ if (useCenter) then
+  local c = get_actor_center(actor)
+  actor.x += (tx - c.x) * ((maxframes - frames) / fib(maxframes))
+  actor.y += (ty - c.y) * ((maxframes - frames) / fib(maxframes))
+ else
+  actor.x += (tx - actor.x) * ((maxframes - frames) / fib(maxframes))
+  actor.y += (ty - actor.y) * ((maxframes - frames) / fib(maxframes))
+ end
+end
+
+function move_actor_expo(actor,tx,ty,frames,maxframes,useCenter)
+ if (useCenter) then
+  local c = get_actor_center(actor)
+  actor.x += (tx - c.x) * (1/2^(maxframes-frames))
+  actor.y += (ty - c.y) * (1/2^(maxframes-frames))
+ else
+  actor.x += (tx - actor.x) * (1/2^(maxframes-frames))
+  actor.y += (ty - actor.y) * (1/2^(maxframes-frames))
+ end
+end
+
+function move_actor_dash_pause(actor,tx,ty,frames,maxframes,useCenter)
+ if (useCenter) then
+  local c = get_actor_center(actor)
+  actor.x += (tx - c.x) * (1 - (frames / maxframes))
+  actor.y += (ty - c.y) * (1 - (frames / maxframes))
+ else
+  actor.x += (tx - actor.x) * (1 - (frames / maxframes))
+  actor.y += (ty - actor.y) * (1 - (frames / maxframes))
+ end
+end
+
 --gives a random platform id, will not return excluded id. give 0 if unnecessary
 function random_platform(exclude_num)
  random = ceil(rnd(platform_cnt))
@@ -818,6 +938,14 @@ function random_platform(exclude_num)
   random = ceil(rnd(platform_cnt))
  end
  return platforms[random]
+end
+
+function fib(steps)
+ local n = 0
+ for i=1,steps do
+  n += i
+ end
+ return n
 end
 
 -->8
