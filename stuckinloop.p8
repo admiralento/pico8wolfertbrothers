@@ -1241,6 +1241,7 @@ function random_attack()
 end
 
 
+bomb_frames = 60
 function platform_bomb()
  --makes a list of 5 index right next to each other (unless wrapping around platform limit)
  bomb_index_list = bomb_index_list_creation(ceil(rnd(platform_cnt)))
@@ -1252,6 +1253,22 @@ function platform_bomb()
  end
 
  --display and animate the 3 sprites
+ if (bomb_frames >= 40) then
+  for i=1,5 do
+   spr(18, platforms[i].x, platforms[i].y)
+   bomb_frames -= 1
+  end
+ elseif (bomb_frames >= 20) then
+  for i=1,5 do
+   spr(19, platforms[i].x, platforms[i].y)
+   bomb_frames -= 1
+  end
+ else
+  for i=1,5 do
+   spr(20, platforms[i].x, platforms[i].y)
+   bomb_frames -= 1
+  end
+ end
  --deal damage when the last sprite leaves
  --create particle effects
 end
@@ -1273,7 +1290,7 @@ function bomb_index_list_creation(x)
  bomb_index_list = {x-2, x-1, x, x+1, x+2}
 
  for i=1,2 do
-  if (bomb_list[i] < 1) do
+  if (bomb_index_list[i] < 1) do
    bomb_index_list[i] = platform_cnt + bomb_list[i]
   end
  end
