@@ -23,6 +23,7 @@ dynamics = {}
 background_objects = {}
 player = {}
 boss_queue = {}
+bomb_list = {}
 gamestate = "menu"
 gamelevel = 1
 progress_event = 1
@@ -1638,36 +1639,50 @@ function random_attack()
 end
 
 
-bomb_frames = 60
+bomb_frame_counter = 150
+bomb_frame_counter_hold = bomb_frame_counter
 function platform_bomb()
  --makes a list of 5 index right next to each other (unless wrapping around platform limit)
- bomb_index_list = bomb_index_list_creation(ceil(rnd(platform_cnt)))
-
- --makes the platform list using the index list
- bomb_list = {}
- for i in all(bomb_index_list) do
-  table.insert(bomb_list, platform[i])
+ current_explosion = false
+ for b in all(bomb_list) do
+  current_explosion = true
  end
 
- --display and animate the 3 sprites
- if (bomb_frames >= 40) then
-  for i=1,5 do
-   spr(18, platforms[i].x, platforms[i].y)
-   bomb_frames -= 1
-  end
- elseif (bomb_frames >= 20) then
-  for i=1,5 do
-   spr(19, platforms[i].x, platforms[i].y)
-   bomb_frames -= 1
-  end
- else
-  for i=1,5 do
-   spr(20, platforms[i].x, platforms[i].y)
-   bomb_frames -= 1
+ if (not current_explosion) then
+  for z in all(bomb_index_list_creation(ceil(rnd(platform_cnt)))) do
+   add(bomb_list, z)
   end
  end
- --deal damage when the last sprite leaves
- --create particle effects
+
+ for a in all(actors) do
+  if (a.s == 65 or a.s == 67 or a.s == 69) then
+   del(actors, a)
+  end
+ end
+
+ for i in all(bomb_list) do
+  if (bomb_frame_counter < 0) then
+
+  elseif (bomb_frame_counter <= (bomb_frame_counter_hold / 3)) then
+   make_actor(69,platforms[i].x - 4,platforms[i].y - 4,2,2)
+  elseif (bomb_frame_counter <= (2 *(bomb_frame_counter_hold / 3))) then
+   make_actor(67,platforms[i].x - 4,platforms[i].y - 4,2,2)
+  elseif (bomb_frame_counter <= bomb_frame_counter_hold) then
+   make_actor(65,platforms[i].x - 4,platforms[i].y - 4,2,2)
+  end
+ end
+
+ if (bomb_frame_counter >= 0) then
+  bomb_frame_counter -= 1
+ elseif (bomb_frame_counter < 0) then
+  bomb_frame_counter = bomb_frame_counter_hold
+  for i in all(bomb_list) do
+   del(bomb_list, i)
+   if (player.current_platform == i) then
+    damage_player(1)
+   end
+  end
+ end
 end
 
 --suggestion from Ammon
@@ -1688,7 +1703,7 @@ function bomb_index_list_creation(x)
 
  for i=1,2 do
   if (bomb_index_list[i] < 1) do
-   bomb_index_list[i] = platform_cnt + bomb_list[i]
+   bomb_index_list[i] = platform_cnt + bomb_index_list[i]
   end
  end
 
@@ -1700,6 +1715,7 @@ function bomb_index_list_creation(x)
 
  return bomb_index_list
 end
+
 
 
 __gfx__
