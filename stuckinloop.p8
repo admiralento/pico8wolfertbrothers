@@ -106,9 +106,9 @@ function make_boss()
  return b
 end
 
-function make_dynamic(x,y)
+function make_dynamic(s,x,y,w,h)
  --projectiles
- d = make_actor(17,x,y,1,1)
+ d = make_actor(s,x,y,w,h)
  d.xvel = 0
  d.yvel = 0
  d.damage = 1
@@ -335,9 +335,8 @@ function _draw()
 	  print(boss.action,0,16)
 	  print(#boss_queue,0,24)
 			local c = get_actor_center(boss)
-			print(c.x,0,120)
-			print(",",8,120)
-			print(c.y,16,120)
+			print(boss.frames,0,112)
+			print(boss.maxFrameCnt,0,120)
 		 print("sCORE: "..tostring(points),0,5,10,11)
 		end
 
@@ -424,7 +423,7 @@ function do_actors_collide(a,b)
     (ac.y - a.bh < bc.y + b.bh))
 end
 
-function move_actor_center(x,y,actor)
+function move_actor_center(actor,x,y)
  --move the actor to center on these coords
  actor.x = x - (actor.w*4)
  actor.y = y - (actor.h*4)
@@ -608,7 +607,7 @@ function animate_all_platforms()
 end
 
 function warp_platform_to_target(platform)
- move_actor_center(platform.targetx,platform.targety,platform)
+ move_actor_center(platform,platform.targetx,platform.targety)
 end
 
 function drift_platform_to_target(platform)
@@ -754,6 +753,12 @@ end
 
 -->8
 --dynamics
+
+function make_fireball(x,y)
+	d = make_dynamic(17,x,y,1,1)
+	move_actor_center(d,x,y)
+	return d
+end
 
 function update_dynamics()
  for d in all(dynamics) do
@@ -923,6 +928,8 @@ function update_boss()
   run_boss_hint_laser()
  elseif (boss.action == "fire laser") then
   run_boss_fire_laser()
+	elseif (boss.action == "static fire") then
+  run_boss_static_fire()
  else
   sfx(0)
   retrieve_next_action()
@@ -1001,7 +1008,7 @@ function run_boss_mad()
  else
   if (move_to_next_cycle()) then
    local c = get_actor_center(boss)
-   apply_angle_mag_dynamic(make_dynamic(c.x,c.y),rnd(1),0.4)
+   apply_angle_mag_dynamic(make_fireball(c.x,c.y),rnd(1),0.4)
    boss.x = boss.cachex
    boss.y = boss.cachey
   else
@@ -1111,10 +1118,9 @@ function run_boss_ring_run()
  end
  if (move_to_next_frame()) then
   boss.s = 46
-  move_actor_center(
+  move_actor_center(boss,
    cx + boss.radius*cos(boss.angle + (1 - (boss.frames / boss.maxFrameCnt))),
-   cy + boss.radius*sin(boss.angle + (1 - (boss.frames / boss.maxFrameCnt))),
-   boss
+   cy + boss.radius*sin(boss.angle + (1 - (boss.frames / boss.maxFrameCnt)))
   )
  else
   if (move_to_next_cycle()) then
@@ -1245,6 +1251,49 @@ function run_boss_fire_laser()
  end
 end
 
+function queue_boss_static_firing_plattern(isImediate,frames,cycles,checkerFireEnabled,checkerFireQuantity)
+	local param = {}
+	if (checkerFireEnabled != nil) then param.checkerFireEnabled = checkerFireEnabled end
+	if (checkerFireQuantity != nil) then param.checkerFireQuantity = checkerFireQuantity end
+
+	if (isImediate == true) then
+		add_boss_queue("static fire",frames,cycles,param,1);
+	else
+		add_boss_queue("static fire",frames,cycles,param);
+	end
+end
+
+function run_boss_static_fire()
+ --boss fires dynamics in determined patterns
+	if (boss.checkerFireEnabled == nil) then error("boss checkerFireEnabled not definded") end
+	if (boss.checkerFireQuantity == nil) then error("boss checkerFireQuantity not definded") end
+
+ if (move_to_next_frame()) then
+  if (true) then
+			if (boss.frames == boss.maxFrameCnt - 1) then
+				sfx(0)
+				for i=1,boss.checkerFireQuantity do
+					-- spawn star
+					local c = get_actor_center(boss)
+		   apply_angle_mag_dynamic(make_fireball(c.x,c.y),(i/boss.checkerFireQuantity),0.4)
+				end
+		 end
+			if (boss.frames == flr(boss.maxFrameCnt/2)) then
+				-- spawn same star shifted in phase
+				for i=1,boss.checkerFireQuantity do
+					local c = get_actor_center(boss)
+		   apply_angle_mag_dynamic(make_fireball(c.x,c.y),(i/boss.checkerFireQuantity)+(1/(2*boss.checkerFireQuantity)),0.4)
+				end
+		 end
+		end
+ else
+  if (move_to_next_cycle()) then
+  else
+   retrieve_next_action()
+  end
+ end
+end
+
 function on_cycle_start()
  return (boss.frames == boss.maxFrameCnt)
 end
@@ -1289,11 +1338,10 @@ end
 function getStageOnePhases()
 	local r = ceil(rnd(60))
 	if (r < 20) then
-		wave3Laser()
+		wave1Laser()
 	elseif (r < 40) then
-		add_boss_queue("mad",3,10)
-		queue_boss_charging(false,20,5,20)
-		add_boss_queue("mad",3,10)
+		add_boss_queue("go home",80,1)
+		queue_boss_static_firing_plattern(false,100,4,true,5)
 	elseif (r < 60) then
 		add_boss_queue("dash to platform",80,1)
 		queue_boss_dash_nxt_platform(false,8,#platforms,randDirection())
@@ -1304,7 +1352,6 @@ function getStageOnePhases()
 		if (ceil(rnd(10)) == 1) then
 			add_boss_queue("panting",160,2)
 		else
-			sfx(0)
 			add_boss_queue("floating",120,2)
 		end
 	end
@@ -1334,7 +1381,6 @@ function getStageTwoPhases()
 		if (ceil(rnd(10)) == 1) then
 			add_boss_queue("panting",160,2)
 		else
-			sfx(0)
 			add_boss_queue("floating",120,2)
 		end
 	end
@@ -1362,7 +1408,6 @@ function getStageThreePhases()
 		if (ceil(rnd(10)) == 1) then
 			add_boss_queue("panting",160,2,0)
 		else
-			sfx(0)
 			add_boss_queue("floating",120,2,0)
 		end
 	end
@@ -1440,9 +1485,9 @@ function queued_boss_action()
 			if(boss_queue[1].param.chargeradius != nil) then boss.chargeradius = boss_queue[1].param.chargeradius end
 			if(boss_queue[1].param.direction != nil) then boss.direction = boss_queue[1].param.direction end
 			if(boss_queue[1].param.sweep != nil) then boss.sweep = boss_queue[1].param.sweep end
-	 else
-			sfx(0)
-		end
+			if(boss_queue[1].param.checkerFireEnabled != nil) then boss.checkerFireEnabled = boss_queue[1].param.checkerFireEnabled end
+			if(boss_queue[1].param.checkerFireQuantity != nil) then boss.checkerFireQuantity = boss_queue[1].param.checkerFireQuantity end
+	 end
 
   del(boss_queue, boss_queue[1])
   return true
