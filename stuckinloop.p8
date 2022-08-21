@@ -18,6 +18,7 @@ actors = {}
 particles = {}
 platforms = {}
 dynamics = {}
+background_objects = {}
 player = {}
 boss_queue = {}
 gamestate = "menu"
@@ -31,7 +32,7 @@ spin_start = 0
 
 debug_testing = true
 
-function make_actor(s,x,y,h,w)
+function make_actor(s,x,y,w,h)
  --basic datatype for most objects
 	a={
 	 x = x,
@@ -67,9 +68,11 @@ function make_platform_random_insert(x,y)
  p.type = "grass"
  p.state = "static"
  local i = ceil(rnd(#platforms))
- if (i <= player.current_platform) then
-  player.current_platform += 1
- end
+	if (gamestate == "game") then
+		if (i <= player.current_platform) then
+	  player.current_platform += 1
+	 end
+	end
  add(platforms, p, i)
 end
 
@@ -117,9 +120,24 @@ function make_particle(x,y,c)
        c = c,
        xvel = 0,
        yvel = 0,
+							accel = 1,
        frames = 1}
  add(particles,p)
  return p
+end
+
+function make_background_object(x,y,s,w,h)
+ --visual effects
+	d = { s = s,
+       x = x,
+						 y = y,
+						 w = w,
+						 h = h,}
+ d.xvel = 0
+ d.yvel = 0
+	d.accel = 1
+ add(background_objects,d)
+ return d
 end
 
 -->8
@@ -127,10 +145,13 @@ end
 
 function _init()
  --runs on start up
+	generate_platforms(10)
 end
 
 function start_game()
- generate_platforms(platform_cnt,1,1)
+	empty_list(actors)
+	empty_list(platforms)
+ generate_platforms(platform_cnt)
 
  player = make_player(0,0,1,1)
  boss = make_boss()
@@ -156,12 +177,22 @@ end
 function _update60()
  totalframes += 1
  update_particles()
+	update_all_platforms()
+	update_background_objects()
 
  if (gamestate == "game") then
+		if (totalframes % 10 == 0) then
+			for n=1,3 do
+		  gen_star_particle(cx,cy,7)
+		 end
+	 end
+
+		if (totalframes % 120 == 0) then
+			gen_planet()
+		end
 
   get_user_input()
   remove_desert_if_touching()
-  update_all_platforms()
 		update_player()
 
   if (boss.state != "disabled") then
@@ -270,17 +301,24 @@ end
 function _draw()
 	cls()
 	if (gamestate == "game") then
+		rectfill(0,0,128,128,0)
+		draw_background()
 	 draw_particles()
 		draw_actors()
-  print(boss.action,0,16)
-  print(#boss_queue,0,24)
-	 print("sCORE: "..tostring(points),0,5,10,11)
+
+		if (debug_testing) then
+	  print(boss.action,0,16)
+	  print(#boss_queue,0,24)
+		 print("sCORE: "..tostring(points),0,5,10,11)
+		end
+
  elseif (gamestate == "menu") then
   rectfill(0,0,128,128,1)
-  for i=1,16 do
-   print("stuck in a loop",cx + 30*cos((i/16) + time()/4) - 25,cy + 30*sin((i/16) + time()/8) - 20,i)
-  end
-  print("press any key to start",20,100,0)
+		draw_actors()
+  print("sTUCK iN a lOOP",35,35,6)
+		print("press any key to start",20+10*cos(0.005*(totalframes-5)),100+5*sin(0.005*2*(totalframes-5)),0)
+  print("press any key to start",20+10*cos(0.005*totalframes),100+5*sin(0.005*2*totalframes),6)
+
  elseif (gamestate == "end") then
   rectfill(0,0,128,128,2)
   draw_particles()
@@ -297,6 +335,15 @@ function draw_actors()
   if (a.state != "disabled") then
    spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
   end
+ end
+end
+
+function draw_background()
+ for b in all(background_objects) do
+		local sx = (b.s % 16) * 8
+		local sy = flr(b.s / 16) * 8
+		local d = distance_to_center(b.x,b.y) --fudge
+  sspr(sx,sy,b.w*8,b.h*8,b.x,b.y,(d/30)*16,(d/30)*16)
  end
 end
 
@@ -445,16 +492,29 @@ function add_platforms(n)
 end
 
 function update_all_platforms()
- if (gamelevel == 1 or gamelevel == 2) then
-  place_platforms_circle(cx,cy,55,1.0)
- else
-  place_platforms_circle(cx,cy,
-   55+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
-   slow_start_sin(0.0005*(totalframes-spin_start),1))
- end
+	if (gamestate == "menu") then
+		if (totalframes % 180 == 0) then add_platforms(1) end
+	 place_platforms_ellispe(cx,40,
+			50+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+			20+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+			0.005*totalframes)
+	else
+		if (gamelevel == 1 or gamelevel == 2) then
+	  place_platforms_circle(cx,cy,55,1.0)
+	 else
+	  place_platforms_circle(cx,cy,
+	   55+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+	   slow_start_sin(0.0005*(totalframes-spin_start),1))
+	 end
+	end
 
  animate_all_platforms()
- rotate_all_platform_spr()
+
+	if (gamestate == "menu") then
+		rotate_all_platform_spr(cx,40)
+	else
+		rotate_all_platform_spr(cx,cy)
+	end
 end
 
 function animate_all_platforms()
@@ -502,10 +562,17 @@ function place_platforms_circle(x,y,r,a)
  end
 end
 
-function rotate_all_platform_spr()
+function place_platforms_ellispe(x,y,r1,r2,a)
+ for n=1,#platforms do
+  platforms[n].targetx = r1*cos(((n-1)/#platforms)+a) + x
+  platforms[n].targety = r2*sin(((n-1)/#platforms)+a) + y
+ end
+end
+
+function rotate_all_platform_spr(x,y)
  for i=1,#platforms do
   local p = platforms[i]
-  local u = rotate_platform_spr(p.x,p.y,cx,cy,
+  local u = rotate_platform_spr(p.x,p.y,x,y,
    p.spriteset[1],p.spriteset[2],p.spriteset[3])
   p.s = u[1]
   p.fh = u[2]
@@ -649,6 +716,28 @@ function check_dynamic_collisions()
 end
 
 -->8
+--background_objects
+function update_background_objects()
+	for p in all(background_objects) do
+  p.x += p.xvel
+  p.y += p.yvel
+		p.xvel *= p.accel
+		p.yvel *= p.accel
+ end
+end
+
+function gen_planet()
+	local l = ceil(rnd(4))
+	if (l == 1) then l = 76
+ elseif (l == 2) then l = 108
+ elseif (l == 3) then l = 78
+ elseif (l == 4) then l = 110 end
+	planet = make_background_object(cx,cy,l,2,2)
+	apply_angle_mag_dynamic(planet,rnd(1),0.1)
+	planet.accel = 1.01
+end
+
+-->8
 --particles
 
 function update_particles()
@@ -656,6 +745,8 @@ function update_particles()
  for p in all(particles) do
   p.x += p.xvel
   p.y += p.yvel
+		p.xvel *= p.accel
+		p.yvel *= p.accel
   p.frames -= 1
   if (p.frames <= 0) then
    add(t0_del,p)
@@ -713,6 +804,13 @@ function gen_hint_laser(x,y,angle,c)
   apply_angle_mag_dynamic(p,rnd(1),0.4)
   p.frames = 20
  end
+end
+
+function gen_star_particle(x,y,c)
+ p = make_particle(x,y,c)
+ apply_angle_mag_dynamic(p,rnd(1),0.2)
+ p.frames = 200
+	p.accel = 1.01
 end
 
 -->8
@@ -943,9 +1041,8 @@ function run_boss_go_home()
   move_actor_dash_pause(boss,cx,cy,boss.frames, boss.maxFrameCnt, true)
  else
   if (move_to_next_cycle()) then
-   set_boss_action("floating",120,1)
   else
-   set_boss_action("floating",120,1)
+   retrieve_next_action()
   end
  end
 end
@@ -1117,7 +1214,7 @@ function retrieve_next_action()
   elseif (r < 80) then
    add_boss_queue("ring run",120,1,1)
    add_boss_queue("dash to platform",6,1,2)
-   add_boss_queue("ring run",10-,1,3)
+   add_boss_queue("ring run",120,1,3)
   end
   if (points > 15) then
    add_boss_queue("panting",160,2,0)
@@ -1438,6 +1535,38 @@ __gfx__
 000000000000000000000000000000000000000000000000000000000000000000000000000000000dfffdd00ddfffd00deeedd00ddeeed00d888dd00dd888d0
 00000000000000000000000000000000000000000000000000000000000000000000000000000000dffdd000000ddffddeedd000000ddeedd88dd000000dd88d
 00000000000000000000000000000000000000000000000000000000000000000000000000000000ddd0000000000dddddd0000000000dddddd0000000000ddd
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000077777700000000009aaaaa00000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007777cc77770000009999998888000
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003777733cccc3000099aaaaaaaa8800
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c3333333ccc333009a888889999aa90
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c333333ccc333c00aa99ffff99999f0
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccc33333ccc33ccc99ffff999ffff88f
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc3cc3ccc3cc339ff999aaa9999998
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc33cccccc3333f999aaa9aaaaaa99
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc333cccc33339888a999999999aa
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc33333cc33338999999998888999
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc33333ccc3339999a99888888899
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc33333cccc3009aaa99888888ff0
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc333ccccc30099fffffffffff90
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc33cccccc000098899998888900
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c777ccc7770000009988aaaaaa000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000777777000000000099889900000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999999000000000026666600000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004449944499000000222222dddd000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000094449944444900002266666666dd00
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000494444994449990026ddddd22226620
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000049999999999994006622eeee22222e0
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999999994499944422eeee222eeeedde
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099449449444944442ee222666222222d
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009944994444449944e222666266666622
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000049444999444494492ddd622222222266
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004999999999449999d22222222dddd222
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044999999994999992222622ddddddd22
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004444999999944900266622ddddddee0
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000444449999994490022eeeeeeeeeee20
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044449944994400002dd2222dddd200
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000499944499900000022dd666666000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999999000000000022dd2200000
 __gff__
 0000010000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
