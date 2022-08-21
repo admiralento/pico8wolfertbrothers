@@ -9,11 +9,13 @@ spr_platform_final = 2
 spr_player = 33
 spr_player_dash = 34
 spr_boss = 14
+life_get_pickup_cnt = 20
 
 --global varibles
 platform_cnt = 15
 starting_platform = 1
 points = 0
+pickups = 0
 actors = {}
 particles = {}
 platforms = {}
@@ -30,7 +32,7 @@ cy = 63
 prev_button_states = btn()
 spin_start = 0
 
-debug_testing = true
+debug_testing = false
 
 function make_actor(s,x,y,w,h)
  --basic datatype for most objects
@@ -159,16 +161,18 @@ function start_game()
  gamelevel = 1
  progress_event = 5 -- five sand tiles
  points = 0
-
+	pickups = 0
+	_update60()
 end
 
 function end_game()
  platforms = {}
  actors = {}
  player = {}
- boss = {}
+ --boss = {}
  dynamics = {}
  gamestate = "end"
+	generate_platforms(10)
 end
 
 -->8
@@ -180,7 +184,16 @@ function _update60()
 	update_all_platforms()
 	update_background_objects()
 
- if (gamestate == "game") then
+if (gamestate == "menu") then
+	if (totalframes % 10 == 0) then
+		for n=1,3 do
+			gen_star_particle(cx,40,7)
+		end
+	end
+	if(btn() > 0) then
+		start_game()
+	end
+elseif (gamestate == "game") then
 		if (totalframes % 10 == 0) then
 			for n=1,3 do
 		  gen_star_particle(cx,cy,7)
@@ -191,7 +204,7 @@ function _update60()
 			gen_planet()
 		end
 
-  get_user_input()
+		get_user_input()
   remove_desert_if_touching()
 		update_player()
 
@@ -217,14 +230,16 @@ function _update60()
 
   advance_game_level()
 
- elseif (gamestate == "menu") then
-  if(btn() > 0) then
-   start_game()
-  end
  elseif (gamestate == "end") then
-  if (totalframes % 10 == 0) then
-   gen_firework_particle(rnd(128),rnd(128))
-  end
+		if (totalframes % 10 == 0) then
+			if (#platforms > 0 and boss.state != "dead") then
+				local c = get_actor_center(platforms[ceil(rnd(#platforms))])
+				gen_firework_particle(c.x,c.y)
+			end
+			for n=1,3 do
+		  gen_star_particle(cx,40,7)
+		 end
+		end
   if(btn(❎) and btn(🅾️)) then
    start_game()
   end
@@ -247,7 +262,7 @@ function get_user_input()
   player.frames = 10
   player.s = 34
  end
- if btnp(4) then
+ if btnp(5) then
   player.current_platform =
    ((player.current_platform - (ceil(#platforms/2)) - 1) % #platforms) + 1
   player.state = "jumping"
@@ -305,6 +320,15 @@ function _draw()
 		draw_background()
 	 draw_particles()
 		draw_actors()
+		draw_player_health()
+		draw_pickup_counter()
+
+		if (gamelevel == 1) then
+			print("press ⬅️ and ➡️",cx-28,cy-20,11)
+			print("to side step",cx-22,cy-12,11)
+			print("press ❎",cx-16,cy-4,11)
+			print("to hop across",cx-26,cy+4,11)
+		end
 
 		if (debug_testing) then
 	  print(boss.action,0,16)
@@ -313,20 +337,25 @@ function _draw()
 		end
 
  elseif (gamestate == "menu") then
-  rectfill(0,0,128,128,1)
+  rectfill(0,0,128,128,0)
+		draw_particles()
 		draw_actors()
-  print("sTUCK iN a lOOP",35,35,6)
-		print("press any key to start",20+10*cos(0.005*(totalframes-5)),100+5*sin(0.005*2*(totalframes-5)),0)
-  print("press any key to start",20+10*cos(0.005*totalframes),100+5*sin(0.005*2*totalframes),6)
+  print("pHASE gATE",42,35,11)
+		print("press ❎ to start",30+10*cos(0.005*(totalframes-5)),100+5*sin(0.005*2*(totalframes-5)),1)
+  print("press ❎ to start",30+10*cos(0.005*totalframes),100+5*sin(0.005*2*totalframes),6)
 
  elseif (gamestate == "end") then
-  rectfill(0,0,128,128,2)
-  draw_particles()
-  for i=1,16 do
-   print("you got looped",cx + 30*cos((i/16) + time()/4) - 25,cy + 30*sin((i/16) + time()/8) - 20,i)
-  end
-  print("sCORE: "..tostring(points),40,85)
-  print("press ❎ and 🅾️ to play again",5,100,0)
+		rectfill(0,0,128,128,0)
+		draw_particles()
+		draw_actors()
+		if (boss.state == "dead") then
+		 print("cONGRATS!",46,35,11)
+			print("mission sucessful!",30,90,11)
+	 else
+			print("gAME oVER",45,35,11)
+			print("the phasegate was destroyed!",10,90,11)
+	 end
+  print("press ❎ and 🅾️ to play again",9,100,11)
  end
 end
 
@@ -345,6 +374,19 @@ function draw_background()
 		local d = distance_to_center(b.x,b.y) --fudge
   sspr(sx,sy,b.w*8,b.h*8,b.x,b.y,(d/30)*16,(d/30)*16)
  end
+end
+
+function draw_player_health()
+	for i=1,player.life do
+		spr(16,8*(16-i),0)
+	end
+end
+
+function draw_pickup_counter()
+	rectfill(1,1,2*life_get_pickup_cnt+3,6,13)
+	for i=1,pickups do
+		line(2*i,2,2*i,5,10)
+	end
 end
 
 function draw_particles()
@@ -491,13 +533,31 @@ function add_platforms(n)
  end
 end
 
+function remove_platforms(n)
+ --removes platforms
+ for i=1,n do
+  local p = platforms[ceil(rnd(#platforms))]
+  del(platforms,p)
+		del(actors,p)
+ end
+ for i=1,#platforms do
+  platforms[i].state = "seeking"
+  set_actor_frames(platforms[i],100)
+ end
+end
+
 function update_all_platforms()
 	if (gamestate == "menu") then
 		if (totalframes % 180 == 0) then add_platforms(1) end
-	 place_platforms_ellispe(cx,40,
+		place_platforms_ellispe(cx,40,
 			50+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
 			20+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
 			0.005*totalframes)
+	elseif (gamestate == "end") then
+		if (totalframes % 30 == 0 and boss.state != "dead") then remove_platforms(1) end
+		place_platforms_ellispe(cx,40,
+			50*cos(0.005*totalframes),
+			30*sin(0.005*totalframes),0.005*totalframes)
 	else
 		if (gamelevel == 1 or gamelevel == 2) then
 	  place_platforms_circle(cx,cy,55,1.0)
@@ -641,6 +701,7 @@ function remove_desert_if_touching()
   platforms[player.current_platform].spriteset = {1,2,3}
   sfx(2)
   points += 1
+		inc_pickups(1)
   if (gamelevel == 1) then
    progress_event -= 1
    if (progress_event > 0) then
@@ -675,6 +736,15 @@ end
 
 function make_random_platform_into_desert()
  change_platform_to_desert_sprites(random_platform(p.current_platform))
+end
+
+function inc_pickups(x)
+	pickups += x
+	while (pickups >= life_get_pickup_cnt) do
+	 pickups -= life_get_pickup_cnt
+		player.life += 1
+		-- needs a sound effect
+ end
 end
 
 -->8
@@ -1503,22 +1573,22 @@ end
 
 
 __gfx__
-00000000bbbbbbbbb300000000000b00aaaaaaaaa900000000000a0000000000000000000000000000000000000000000000000dd00000000000000dd0000000
-000000003bb3bbb3bbb300000000bb309aa9aaa9aaa900000000aa900000000000000000000000000000000000000000000000deed000000000000daad000000
-000000000bb43bb0bbbb3400000bbb300aaf9aa0aaaa9f00000aaa900000000000000000000000000000000000000000000000deed000000000000daad000000
-0000000003344b30bb34444000bb3340099ffa90aa9ffff000aa99f0000000000000000000000000000000000000000000000d1ee1d0000000000daaaad00000
-0000000000444300b34444440bb3444000fff900a9ffffff0aa9fff00000000000000000000000000000000000000000ddddd19ee91dddddddddd99aa99ddddd
-0000000000444400bbb34400bbb3444400ffff00aaa9ff00aaa9ffff0000000000000000000000000000000000000000deee199ee991eeeddaaaa92aa29aaaad
-0000000000044000bbb300000b344444000ff000aaa900000a9fffff00000000000000000000000000000000000000000deee92ee29eeed00daaa92aa29aaad0
-0000000000040000b300000000000444000f0000a900000000000fff000000000000000000000000000000000000000000dee92ee29eed0000daa92aa29aad00
-0000000000000000aaaaaaaa999999998888888800000000000000000000000000000000000000000000000000000000000deeeeeeeed000000daaaaaaaad000
-0000000000a99a00a000000a900000098000000800000000000000000000000000000000000000000000000000000000000dee2222eed000000da2aaaaaad000
-000000000a9889a0a000000a90000009800000080000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaa2222aaad00
-0000000009888890a000000a90000009800000080000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaaaaaaaaad00
-0000000009888890a000000a9000000980000008000000000000000000000000000000000000000000000000000000000deeeeeddeeeeed00daaaaaddaaaaad0
-000000000a9889a0a000000a9000000980000008000000000000000000000000000000000000000000000000000000000deeedd00ddeeed00daaadd00ddaaad0
-0000000000a99a00a000000a900000098000000800000000000000000000000000000000000000000000000000000000deedd000000ddeeddaadd000000ddaad
-0000000000000000aaaaaaaa999999998888888800000000000000000000000000000000000000000000000000000000ddd0000000000dddddd0000000000ddd
+00000000ddddddddd600000000000d0022222222260000000000020000000000000000000000000000000000000000000000000dd00000000000000dd0000000
+00000000655d5556d55600000000ddd06aa2aaa62aa60000000022200000000000000000000000000000000000000000000000deed000000000000daad000000
+0000000005d55d50d5d55600000dd6500a2aa2a02a2aa600000226a00000000000000000000000000000000000000000000000deed000000000000daad000000
+000000000655d560d55d555600dd556006aa2a602aa2aaa60022aa60000000000000000000000000000000000000000000000d1ee1d0000000000daaaad00000
+00000000005d5500dd55d5560dd5d5d000a2aa0022aa2aa6022a2a200000000000000000000000000000000000000000ddddd19ee91dddddddddd99aa99ddddd
+0000000000655600d5d55600dd65d5d6006aa6002a2aa600226a2a260000000000000000000000000000000000000000deee199ee991eeeddaaaa92aa29aaaad
+0000000000055000d55600000d5655d5000aa0002aa6000002a6aa2a00000000000000000000000000000000000000000deee92ee29eeed00daaa92aa29aaad0
+0000000000066000d6000000000006d500066000260000000000062a000000000000000000000000000000000000000000dee92ee29eed0000daa92aa29aad00
+0660660000000000aaaaaaaa999999998888888800000000000000000000000000000000000000000000000000000000000deeeeeeeed000000daaaaaaaad000
+6886886000a99a00a000000a900000098000000800000000000000000000000000000000000000000000000000000000000dee2222eed000000da2aaaaaad000
+688888600a9889a0a000000a90000009800000080000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaa2222aaad00
+6888886009888890a000000a90000009800000080000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaaaaaaaaad00
+6888886009888890a000000a9000000980000008000000000000000000000000000000000000000000000000000000000deeeeeddeeeeed00daaaaaddaaaaad0
+068886000a9889a0a000000a9000000980000008000000000000000000000000000000000000000000000000000000000deeedd00ddeeed00daaadd00ddaaad0
+0068600000a99a00a000000a900000098000000800000000000000000000000000000000000000000000000000000000deedd000000ddeeddaadd000000ddaad
+0006000000000000aaaaaaaa999999998888888800000000000000000000000000000000000000000000000000000000ddd0000000000dddddd0000000000ddd
 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dd00000000000000dd00000000000000dd0000000
 0000000000cccc0000eeee0000aaaa00000000000000000000000000000000000000000000000000000000dffd000000000000deed000000000000d88d000000
 000000000c1cc1c00e1ee1e00a1aa1a0000000000000000000000000000000000000000000000000000000dffd000000000000deed000000000000d88d000000
