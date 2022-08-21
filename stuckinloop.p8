@@ -9,25 +9,33 @@ spr_platform_final = 2
 spr_player = 33
 spr_player_dash = 34
 spr_boss = 14
+life_get_pickup_cnt = 20
 
 --global varibles
-platform_cnt = 20
+platform_cnt = 15
 starting_platform = 1
 points = 0
+pickups = 0
 actors = {}
 particles = {}
 platforms = {}
 dynamics = {}
+background_objects = {}
 player = {}
 boss_queue = {}
 bomb_list = {}
 gamestate = "menu"
+gamelevel = 1
+progress_event = 1
 totalframes = 0
 cx = 63
 cy = 63
 prev_button_states = btn()
+spin_start = 0
 
-function make_actor(s,x,y,h,w)
+debug_testing = true
+
+function make_actor(s,x,y,w,h)
  --basic datatype for most objects
 	a={
 	 x = x,
@@ -63,9 +71,11 @@ function make_platform_random_insert(x,y)
  p.type = "grass"
  p.state = "static"
  local i = ceil(rnd(#platforms))
- if (i <= player.current_platform) then
-  player.current_platform += 1
- end
+	if (gamestate == "game") then
+		if (i <= player.current_platform) then
+	  player.current_platform += 1
+	 end
+	end
  add(platforms, p, i)
 end
 
@@ -83,7 +93,7 @@ end
 function make_boss()
  --boss class
  b = make_actor(spr_boss,cx-8,cy-8,2,2)
- b.state = "static"
+ b.state = "disabled"
  b.action = "static"
  b.frames = 0
  b.maxFrameCnt = 0
@@ -113,9 +123,24 @@ function make_particle(x,y,c)
        c = c,
        xvel = 0,
        yvel = 0,
+							accel = 1,
        frames = 1}
  add(particles,p)
  return p
+end
+
+function make_background_object(x,y,s,w,h)
+ --visual effects
+	d = { s = s,
+       x = x,
+						 y = y,
+						 w = w,
+						 h = h,}
+ d.xvel = 0
+ d.yvel = 0
+	d.accel = 1
+ add(background_objects,d)
+ return d
 end
 
 -->8
@@ -123,28 +148,32 @@ end
 
 function _init()
  --runs on start up
+	generate_platforms(10)
 end
 
 function start_game()
- generate_platforms(platform_cnt,1,1)
+	empty_list(actors)
+	empty_list(platforms)
+ generate_platforms(platform_cnt)
 
  player = make_player(0,0,1,1)
  boss = make_boss()
  gamestate = "game"
+ gamelevel = 1
+ progress_event = 5 -- five sand tiles
  points = 0
-
- add_boss_queue("floating",120,2,-1)
- add_boss_queue("dash to platform",80,1,-1)
- add_boss_queue("dash to next platform",8,#platforms,-1)
+	pickups = 0
+	_update60()
 end
 
 function end_game()
  platforms = {}
  actors = {}
  player = {}
- boss = {}
+ --boss = {}
  dynamics = {}
  gamestate = "end"
+	generate_platforms(10)
 end
 
 -->8
@@ -153,32 +182,65 @@ end
 function _update60()
  totalframes += 1
  update_particles()
+	update_all_platforms()
+	update_background_objects()
 
- if (gamestate == "game") then
+if (gamestate == "menu") then
+	if (totalframes % 10 == 0) then
+		for n=1,3 do
+			gen_star_particle(cx,40,7)
+		end
+	end
+	if(btn() > 0) then
+		start_game()
+	end
+elseif (gamestate == "game") then
+		if (totalframes % 10 == 0) then
+			for n=1,3 do
+		  gen_star_particle(cx,cy,7)
+		 end
+	 end
 
-  get_user_input()
+		if (totalframes % 120 == 0) then
+			gen_planet()
+		end
+
+		get_user_input()
   remove_desert_if_touching()
-  update_all_platforms()
 		update_player()
-	 update_boss()
+
+  if (boss.state != "disabled") then
+   update_boss()
+   check_boss_collision()
+  end
+
 		update_dynamics()
 		check_dynamic_collisions()
-	 check_boss_collision()
 		add_desert_if_missing()
   clean_up_dynamics()
 
   if (player.life <= 0) then
+   if (not(debug_testing)) then
+    end_game()
+   end
+  end
+
+  if (boss.state == "dead") then
    end_game()
   end
 
- elseif (gamestate == "menu") then
-  if(btn() > 0) then
-   start_game()
-  end
+  advance_game_level()
+
  elseif (gamestate == "end") then
-  if (totalframes % 10 == 0) then
-   gen_firework_particle(rnd(128),rnd(128))
-  end
+		if (totalframes % 10 == 0) then
+			if (#platforms > 0 and boss.state != "dead") then
+				local c = get_actor_center(platforms[ceil(rnd(#platforms))])
+				gen_firework_particle(c.x,c.y)
+			end
+			for n=1,3 do
+		  gen_star_particle(cx,40,7)
+		 end
+		end
   if(btn(❎) and btn(🅾️)) then
    start_game()
   end
@@ -201,7 +263,7 @@ function get_user_input()
   player.frames = 10
   player.s = 34
  end
- if btnp(4) then
+ if btnp(5) then
   player.current_platform =
    ((player.current_platform - (ceil(#platforms/2)) - 1) % #platforms) + 1
   player.state = "jumping"
@@ -223,38 +285,113 @@ function record_button_states()
  prev_button_states = btn()
 end
 
+function advance_game_level()
+ if (progress_event <= 0) then
+  sfx(6)
+  gamelevel += 1
+  points = 0
+  if (gamelevel == 2) then
+   --starting second phase
+   -- 3 hits to move on
+   spawn_boss()
+   progress_event = 3
+  elseif (gamelevel == 3) then
+   --starting thrid phase
+   -- 3 hits to move on
+   -- loop starts moving
+   spin_start = totalframes
+   progress_event = 3
+  elseif (gamelevel == 4) then
+   --starting fourth phase
+   -- 3 hits to move on
+   progress_event = 3
+  elseif (gamelevel == 5) then
+   set_boss_action("dying",3,80)
+  end
+ end
+end
+
 -->8
 --draw
 
 function _draw()
 	cls()
 	if (gamestate == "game") then
+		rectfill(0,0,128,128,0)
+		draw_background()
 	 draw_particles()
 		draw_actors()
-  print(boss.action,0,16)
-  print(boss.platform,0,24)
-	 print("sCORE: "..tostring(points),0,5,10,11)
+		draw_player_health()
+		draw_pickup_counter()
+
+		if (gamelevel == 1) then
+			print("press ⬅️ and ➡️",cx-28,cy-20,11)
+			print("to side step",cx-22,cy-12,11)
+			print("press ❎",cx-16,cy-4,11)
+			print("to hop across",cx-26,cy+4,11)
+		end
+
+		if (debug_testing) then
+	  print(boss.action,0,16)
+	  print(#boss_queue,0,24)
+			local c = get_actor_center(boss)
+			print(c.x,0,120)
+			print(",",8,120)
+			print(c.y,16,120)
+		 print("sCORE: "..tostring(points),0,5,10,11)
+		end
+
  elseif (gamestate == "menu") then
-  rectfill(0,0,128,128,1)
-  for i=1,16 do
-   print("stuck in a loop",cx + 30*cos((i/16) + time()/4) - 25,cy + 30*sin((i/16) + time()/8) - 20,i)
-  end
-  print("press any key to start",20,100,0)
+  rectfill(0,0,128,128,0)
+		draw_particles()
+		draw_actors()
+  print("pHASE gATE",42,35,11)
+		print("press ❎ to start",30+10*cos(0.005*(totalframes-5)),100+5*sin(0.005*2*(totalframes-5)),1)
+  print("press ❎ to start",30+10*cos(0.005*totalframes),100+5*sin(0.005*2*totalframes),6)
+
  elseif (gamestate == "end") then
-  rectfill(0,0,128,128,2)
-  draw_particles()
-  for i=1,16 do
-   print("you got looped",cx + 30*cos((i/16) + time()/4) - 25,cy + 30*sin((i/16) + time()/8) - 20,i)
-  end
-  print("sCORE: "..tostring(points),40,85)
-  print("press ❎ and 🅾️ to play again",5,100,0)
+		rectfill(0,0,128,128,0)
+		draw_particles()
+		draw_actors()
+		if (boss.state == "dead") then
+		 print("cONGRATS!",46,35,11)
+			print("mission sucessful!",30,90,11)
+	 else
+			print("gAME oVER",45,35,11)
+			print("the phasegate was destroyed!",10,90,11)
+	 end
+  print("press ❎ and 🅾️ to play again",9,100,11)
  end
 end
 
 function draw_actors()
  for a in all(actors) do
-  spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
+  if (a.state != "disabled") then
+   spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
+  end
  end
+end
+
+function draw_background()
+ for b in all(background_objects) do
+		local sx = (b.s % 16) * 8
+		local sy = flr(b.s / 16) * 8
+		local d = distance_to_center(b.x,b.y) --fudge
+  sspr(sx,sy,b.w*8,b.h*8,b.x,b.y,(d/30)*16,(d/30)*16)
+ end
+end
+
+function draw_player_health()
+	for i=1,player.life do
+		spr(16,8*(16-i),0)
+	end
+end
+
+function draw_pickup_counter()
+	rectfill(1,1,2*life_get_pickup_cnt+3,6,13)
+	for i=1,pickups do
+		line(2*i,2,2*i,5,10)
+	end
 end
 
 function draw_particles()
@@ -401,13 +538,48 @@ function add_platforms(n)
  end
 end
 
+function remove_platforms(n)
+ --removes platforms
+ for i=1,n do
+  local p = platforms[ceil(rnd(#platforms))]
+  del(platforms,p)
+		del(actors,p)
+ end
+ for i=1,#platforms do
+  platforms[i].state = "seeking"
+  set_actor_frames(platforms[i],100)
+ end
+end
+
 function update_all_platforms()
- place_platforms_circle(cx,cy,
-  56+5*sin(0.0005*totalframes*7),
-  sin(0.0005*totalframes)
- )
+	if (gamestate == "menu") then
+		if (totalframes % 180 == 0) then add_platforms(1) end
+		place_platforms_ellispe(cx,40,
+			50+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+			20+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+			0.005*totalframes)
+	elseif (gamestate == "end") then
+		if (totalframes % 30 == 0 and boss.state != "dead") then remove_platforms(1) end
+		place_platforms_ellispe(cx,40,
+			50*cos(0.005*totalframes),
+			30*sin(0.005*totalframes),0.005*totalframes)
+	else
+		if (gamelevel == 1 or gamelevel == 2) then
+	  place_platforms_circle(cx,cy,55,1.0)
+	 else
+	  place_platforms_circle(cx,cy,
+	   55+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+	   slow_start_sin(0.0005*(totalframes-spin_start),1))
+	 end
+	end
+
  animate_all_platforms()
- rotate_all_platform_spr()
+
+	if (gamestate == "menu") then
+		rotate_all_platform_spr(cx,40)
+	else
+		rotate_all_platform_spr(cx,cy)
+	end
 end
 
 function animate_all_platforms()
@@ -455,10 +627,17 @@ function place_platforms_circle(x,y,r,a)
  end
 end
 
-function rotate_all_platform_spr()
+function place_platforms_ellispe(x,y,r1,r2,a)
+ for n=1,#platforms do
+  platforms[n].targetx = r1*cos(((n-1)/#platforms)+a) + x
+  platforms[n].targety = r2*sin(((n-1)/#platforms)+a) + y
+ end
+end
+
+function rotate_all_platform_spr(x,y)
  for i=1,#platforms do
   local p = platforms[i]
-  local u = rotate_platform_spr(p.x,p.y,cx,cy,
+  local u = rotate_platform_spr(p.x,p.y,x,y,
    p.spriteset[1],p.spriteset[2],p.spriteset[3])
   p.s = u[1]
   p.fh = u[2]
@@ -527,6 +706,13 @@ function remove_desert_if_touching()
   platforms[player.current_platform].spriteset = {1,2,3}
   sfx(2)
   points += 1
+		inc_pickups(1)
+  if (gamelevel == 1) then
+   progress_event -= 1
+   if (progress_event > 0) then
+    add_platforms(1)
+   end
+  end
  end
 end
 
@@ -555,6 +741,15 @@ end
 
 function make_random_platform_into_desert()
  change_platform_to_desert_sprites(random_platform(p.current_platform))
+end
+
+function inc_pickups(x)
+	pickups += x
+	while (pickups >= life_get_pickup_cnt) do
+	 pickups -= life_get_pickup_cnt
+		player.life += 1
+		-- needs a sound effect
+ end
 end
 
 -->8
@@ -596,6 +791,28 @@ function check_dynamic_collisions()
 end
 
 -->8
+--background_objects
+function update_background_objects()
+	for p in all(background_objects) do
+  p.x += p.xvel
+  p.y += p.yvel
+		p.xvel *= p.accel
+		p.yvel *= p.accel
+ end
+end
+
+function gen_planet()
+	local l = ceil(rnd(4))
+	if (l == 1) then l = 76
+ elseif (l == 2) then l = 108
+ elseif (l == 3) then l = 78
+ elseif (l == 4) then l = 110 end
+	planet = make_background_object(cx,cy,l,2,2)
+	apply_angle_mag_dynamic(planet,rnd(1),0.1)
+	planet.accel = 1.01
+end
+
+-->8
 --particles
 
 function update_particles()
@@ -603,6 +820,8 @@ function update_particles()
  for p in all(particles) do
   p.x += p.xvel
   p.y += p.yvel
+		p.xvel *= p.accel
+		p.yvel *= p.accel
   p.frames -= 1
   if (p.frames <= 0) then
    add(t0_del,p)
@@ -662,11 +881,27 @@ function gen_hint_laser(x,y,angle,c)
  end
 end
 
+function gen_star_particle(x,y,c)
+ p = make_particle(x,y,c)
+ apply_angle_mag_dynamic(p,rnd(1),0.2)
+ p.frames = 200
+	p.accel = 1.01
+end
+
 -->8
 --boss
 
+function spawn_boss()
+ set_boss_action("spawning",20,4)
+end
+
 function update_boss()
- if (boss.action == "floating") then
+ if (boss.state == "disabled") then return end
+ if (boss.action == "dying") then
+  run_boss_death()
+ elseif (boss.action == "spawning") then
+  run_boss_spawn()
+ elseif (boss.action == "floating") then
   run_boss_float()
  elseif (boss.action == "mad") then
   run_boss_mad()
@@ -694,10 +929,49 @@ function update_boss()
  end
 end
 
+function run_boss_death()
+ --boss flashes in and out every frame
+ if (on_cycle_start()) then
+  boss.cachex = boss.x
+  boss.cachey = boss.y
+ end
+ if (move_to_next_frame()) then
+  boss.s = 42
+  boss.x += 2*cos(boss.frames/boss.maxFrameCnt)
+  local c = get_actor_center(boss)
+  if (totalframes % 8 == 0) then
+   gen_firework_particle(c.x,c.y)
+   sfx(0)
+  end
+ else
+  if (move_to_next_cycle()) then
+   boss.x = boss.cachex
+   boss.y = boss.cachey
+  else
+   boss.state = "dead"
+  end
+ end
+end
+
+function run_boss_spawn()
+ --boss flashes in and out every frame
+ if (move_to_next_frame()) then
+  if (boss.frames % boss.maxFrameCnt < (boss.maxFrameCnt/2)) then
+   boss.s = 14
+  else
+   boss.s = 48
+  end
+ else
+  if (move_to_next_cycle()) then
+  else
+   retrieve_next_action()
+  end
+ end
+end
+
 function run_boss_float()
  --boss floats in a figure eight each cycle
- if (first_frame()) then
-  boss.state = "active"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -717,8 +991,7 @@ end
 
 function run_boss_mad()
  --boss shakes and spits a fireball each cycle
- if (first_frame()) then
-  boss.state = "active"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -737,20 +1010,32 @@ function run_boss_mad()
  end
 end
 
+function queue_boss_charging(isImediate,frames,cycles,chargeradius)
+	local param = {}
+	if (chargeradius != nil) then param.chargeradius = chargeradius end
+
+	if (isImediate == true) then
+		add_boss_queue("charging",frames,cycles,param,1);
+	else
+		add_boss_queue("charging",frames,cycles,param);
+	end
+end
+
 function run_boss_charging()
  --boss charges around in short bursts
- if (first_frame()) then
-  boss.state = "active"
-  boss.cachex = boss.x + 20*cos(rnd())
-  boss.cachey = boss.y + 20*sin(rnd())
+	if (boss.chargeradius == nil) then
+		error("boss charge radius is not defined")
+	end
+ if (on_cycle_start()) then
+  boss.cachex = boss.x + boss.chargeradius*cos(rnd())
+  boss.cachey = boss.y + boss.chargeradius*sin(rnd())
  end
  if (move_to_next_frame()) then
   boss.s = 46
-  move_actor_dash_pause(boss,boss.cachex,boss.cachey,boss.frames, boss.maxFrameCnt, false)
+  move_actor_dash_pause(boss, boss.cachex, boss.cachey,
+			boss.frames, boss.maxFrameCnt, false)
  else
   if (move_to_next_cycle()) then
-   boss.cachex = boss.x + 20*cos(rnd())
-   boss.cachey = boss.y + 20*sin(rnd())
   else
    retrieve_next_action()
   end
@@ -759,14 +1044,12 @@ end
 
 function run_boss_dash_rnd_platform()
  --boss goes to a rnd platform each cycle
- if (first_frame()) then
+ if (on_cycle_start()) then
   local index = ceil(rnd(#platforms))
   local t = get_platform_coords(index)
+		boss.platform = index
   boss.targetx = t.x
   boss.targety = t.y
-  boss.state = "active"
-  boss.platform = index
-  boss.direction = randDirection()
  end
  if (move_to_next_frame()) then
   boss.s = 14
@@ -779,18 +1062,33 @@ function run_boss_dash_rnd_platform()
  end
 end
 
+function queue_boss_dash_nxt_platform(isImediate,frames,cycles,direction)
+	local param = {}
+	if (direction != nil) then param.direction = direction end
+
+	if (isImediate == true) then
+		add_boss_queue("dash to next platform",frames,cycles,param,1);
+	else
+		add_boss_queue("dash to next platform",frames,cycles,param);
+	end
+end
+
 function run_boss_dash_nxt_platform()
  --boss goes to the next nearest platform, then in consectutive order for each cycle
- if (first_frame()) then
-  if (first_cycle()) then
-   local c = get_actor_center(boss)
-   boss.platform = find_closest_platform_index(c.x, c.y)
-  end
+	if (boss.direction == nil) then
+		error("boss direction is not defined")
+	end
+	if (on_cycle_start()) then
+		if (on_first_cycle()) then
+			--locate closest platform
+		 local c = get_actor_center(boss)
+		 boss.platform = find_closest_platform_index(c.x, c.y)
+	 end
+		--set target to next platform
   boss.platform = ((boss.platform - 1 + boss.direction) % #platforms) + 1
   local t = get_platform_coords(boss.platform)
   boss.targetx = t.x
   boss.targety = t.y
-  boss.state = "active"
  end
  if (move_to_next_frame()) then
   boss.s = 14
@@ -806,7 +1104,7 @@ end
 
 function run_boss_ring_run()
  --boss runs in a circle each cycle
- if (first_frame()) then
+ if (on_cycle_start()) then
   local c = get_actor_center(boss)
   boss.radius = distance_to_center(c.x,c.y)
   boss.angle = atan2(c.x-cx,c.y-cy)
@@ -828,25 +1126,20 @@ end
 
 function run_boss_go_home()
  --boss moves to the center of the screen each cycle
- if (first_frame()) then
-  boss.state = "active"
- end
  if (move_to_next_frame()) then
   boss.s = 14
-  move_actor_const_accel(boss,cx,cy,boss.frames, boss.maxFrameCnt, true)
+  move_actor_dash_pause(boss,cx,cy,boss.frames,boss.maxFrameCnt,true)
  else
   if (move_to_next_cycle()) then
-   set_boss_action("floating",120,1)
   else
-   set_boss_action("floating",120,1)
+   retrieve_next_action()
   end
  end
 end
 
 function run_boss_panting()
  --boss floats in a weak state each cycle
- if (first_frame()) then
-  boss.state = "weak"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -870,9 +1163,6 @@ end
 
 function run_boss_hit()
  --boss flashes each cycle
- if (first_frame()) then
-  boss.state = "invincible"
- end
  if (move_to_next_frame()) then
   if (boss.frames % boss.maxFrameCnt < boss.maxFrameCnt/2) then
    boss.s = 42
@@ -887,19 +1177,23 @@ function run_boss_hit()
  end
 end
 
+function queue_boss_hint_laser(isImediate,frames,cycles,angle)
+	local param = {}
+	if (angle != nil) then param.angle = angle end
+
+	if (isImediate == true) then
+		add_boss_queue("hint laser",frames,cycles,param,1);
+	else
+		add_boss_queue("hint laser",frames,cycles,param);
+	end
+end
+
 function run_boss_hint_laser()
  --boss generates particles in a direction each cycle
- if (first_frame()) then
-  boss.state = "active"
+	if (boss.angle == nil) then error("boss angle not definded") end
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
-  if (first_cycle()) then
-   local t = get_platform_coords(ceil(rnd(#platforms)))
-   boss.targetx = t.x
-   boss.targety = t.y
-   boss.direction = randDirection()
-   boss.angle = atan2(boss.targetx-boss.cachex,boss.targety-boss.cachey)
-  end
  end
  if (move_to_next_frame()) then
   boss.s = 46
@@ -907,25 +1201,36 @@ function run_boss_hint_laser()
   local c = get_actor_center(boss)
   gen_hint_laser(c.x,c.y,boss.angle,10)
  else
-  if (move_to_next_cycle()) then
-   boss.x = boss.cachex
-   boss.y = boss.cachey
-  else
-   add_boss_queue("fire laser",120,1,1)
+		boss.x = boss.cachex
+		boss.y = boss.cachey
+  if (not(move_to_next_cycle())) then
    retrieve_next_action()
   end
  end
 end
 
+function queue_boss_fire_laser(isImediate,frames,cycles,a,sweep,direction)
+	local param = {}
+	if (a != nil) then param.angle = a end
+	if (sweep != nil) then param.sweep = sweep end
+	if (direction != nil) then param.direction = direction end
+
+	if (isImediate == true) then
+		add_boss_queue("fire laser",frames,cycles,param,1);
+	else
+		add_boss_queue("fire laser",frames,cycles,param);
+	end
+end
+
 function run_boss_fire_laser()
  --boss shakes and trys to apply damage using the angle from hint laser each cycle
- if (first_frame()) then
-  boss.state = "active"
- end
+	if (boss.angle == nil) then error("boss angle not definded") end
+	if (boss.direction == nil) then error("boss direction not definded") end
+	if (boss.sweep == nil) then error("boss sweep not definded") end
  if (move_to_next_frame()) then
   boss.s = 42
   sfx(5)
-  local angle = boss.angle + 0.05*boss.direction*(1-boss.frames/boss.maxFrameCnt)
+  local angle = boss.angle + boss.sweep*boss.direction*(1-boss.frames/boss.maxFrameCnt)
   local c = get_actor_center(boss)
   gen_laser(c.x,c.y,angle,7)
   if (raycast_to_actor(c.x,c.y,angle,player) and player.invincibleTimer <= 0) then
@@ -940,11 +1245,11 @@ function run_boss_fire_laser()
  end
 end
 
-function first_frame()
+function on_cycle_start()
  return (boss.frames == boss.maxFrameCnt)
 end
 
-function first_cycle()
+function on_first_cycle()
  return (boss.cycles == boss.maxCycleCnt)
 end
 
@@ -962,18 +1267,109 @@ end
 function retrieve_next_action()
  --randomly selects the next attack or attack pattern
 
- if (queued_boss_action()) then
-  -- if action is in queue, it is run and the rnd is aborted
-  return
- end
-
  local c = get_actor_center(boss)
  if (distance_to_center(c.x, c.y) > 64) then
   set_boss_action("go home",40,1)
   return
  end
 
- while true do
+	if (#boss_queue == 0) then
+		if (gamelevel == 2) then getStageOnePhases()
+		elseif (gamelevel == 3) then getStageTwoPhases()
+		elseif (gamelevel == 4) then getStageThreePhases()
+		end
+	end
+
+ if (not(queued_boss_action())) then
+		getRandomAction()
+	end
+
+end
+
+function getStageOnePhases()
+	local r = ceil(rnd(60))
+	if (r < 20) then
+		wave3Laser()
+	elseif (r < 40) then
+		add_boss_queue("mad",3,10)
+		queue_boss_charging(false,20,5,20)
+		add_boss_queue("mad",3,10)
+	elseif (r < 60) then
+		add_boss_queue("dash to platform",80,1)
+		queue_boss_dash_nxt_platform(false,8,#platforms,randDirection())
+	end
+	if (points > 15) then
+		add_boss_queue("panting",160,2)
+	elseif (points > 6) then
+		if (ceil(rnd(10)) == 1) then
+			add_boss_queue("panting",160,2)
+		else
+			sfx(0)
+			add_boss_queue("floating",120,2)
+		end
+	end
+end
+
+function getStageTwoPhases()
+	local r = ceil(rnd(80))
+	if (r < 20) then
+		wave2Laser()
+	elseif (r < 40) then
+		add_boss_queue("mad",3,15)
+		queue_boss_charging(false,20,10,30)
+		add_boss_queue("mad",3,15)
+	elseif (r < 60) then
+		local l = randDirection()
+		add_boss_queue("dash to platform",60,1)
+		queue_boss_dash_nxt_platform(false,6,#platforms,l)
+		queue_boss_dash_nxt_platform(false,6,#platforms,-l)
+	elseif (r < 80) then
+		add_boss_queue("ring run",120,1)
+		add_boss_queue("dash to platform",60,1)
+		add_boss_queue("ring run",120,1)
+	end
+	if (points > 15) then
+		add_boss_queue("panting",160,2)
+	elseif (points > 6) then
+		if (ceil(rnd(10)) == 1) then
+			add_boss_queue("panting",160,2)
+		else
+			sfx(0)
+			add_boss_queue("floating",120,2)
+		end
+	end
+end
+
+function getStageThreePhases()
+	local r = ceil(rnd(80))
+	if (r < 20) then
+		wave3Laser()
+	elseif (r < 40) then
+		add_boss_queue("mad",3,20,1)
+		add_boss_queue("charging",20,15,2)
+		add_boss_queue("mad",3,20,3)
+	elseif (r < 60) then
+		add_boss_queue("dash to platform",40,1,1)
+		add_boss_queue("dash to next platform",4,#platforms,2)
+	elseif (r < 80) then
+		add_boss_queue("ring run",80,1,1)
+		add_boss_queue("dash to platform",40,1,2)
+		add_boss_queue("ring run",80,1,3)
+	end
+	if (points > 15) then
+		add_boss_queue("panting",160,2,0)
+	elseif (points > 6) then
+		if (ceil(rnd(10)) == 1) then
+			add_boss_queue("panting",160,2,0)
+		else
+			sfx(0)
+			add_boss_queue("floating",120,2,0)
+		end
+	end
+end
+
+function getRandomAction()
+	while true do
   local r = ceil(rnd(8))
   if (r == 1) then
    set_boss_action("floating",120,1)
@@ -1015,16 +1411,22 @@ function retrieve_next_action()
  end
 end
 
-function set_boss_state(state)
- boss.state = state
-end
-
 function set_boss_action(action, maxFrameCnt, cycles)
  boss.action = action
  boss.maxFrameCnt = maxFrameCnt
  boss.frames = maxFrameCnt
  boss.cycles = cycles
  boss.maxCycleCnt = cycles
+
+	if (boss.action == "panting") then
+		boss.state = "weak"
+	elseif (boss.action == "hit"
+						or boss.action == "dying"
+					 or boss.action == "spawning") then
+		boss.state = "invincible"
+	else
+		boss.state = "active"
+	end
 end
 
 function queued_boss_action()
@@ -1032,17 +1434,28 @@ function queued_boss_action()
   set_boss_action(boss_queue[1].action,
    boss_queue[1].maxFrameCnt,
    boss_queue[1].cycles)
+
+		if (boss_queue[1].param != nil) then
+			if(boss_queue[1].param.angle != nil) then boss.angle = boss_queue[1].param.angle end
+			if(boss_queue[1].param.chargeradius != nil) then boss.chargeradius = boss_queue[1].param.chargeradius end
+			if(boss_queue[1].param.direction != nil) then boss.direction = boss_queue[1].param.direction end
+			if(boss_queue[1].param.sweep != nil) then boss.sweep = boss_queue[1].param.sweep end
+	 else
+			sfx(0)
+		end
+
   del(boss_queue, boss_queue[1])
   return true
  end
  return false
 end
 
-function add_boss_queue(action, maxFrameCnt, cycles, index)
+function add_boss_queue(action, maxFrameCnt, cycles, param, index)
  bq = { action = action,
         maxFrameCnt = maxFrameCnt,
-        cycles = cycles}
- if (index <= 0) then
+        cycles = cycles,
+							 param = param }
+ if (index == nil) then
   add(boss_queue, bq)
  else
   add(boss_queue, bq, index)
@@ -1054,7 +1467,6 @@ function check_boss_collision()
  if (do_actors_collide(player,boss) and player.invincibleTimer <= 0) then
   if (boss.state == "weak") then
    set_boss_action("hit",10,10)
-   points += 5;
    damage_boss(1)
   elseif (boss.state == "active") then
    damage_player(1)
@@ -1065,10 +1477,48 @@ end
 function damage_boss(d)
  sfx(4)
  boss.life -= d
+ if (gamelevel > 1) then
+  progress_event -= 1
+ end
 end
 
 -->8
+--boss attack
+
+function wave1Laser()
+	for i=1,3 do
+		local ang = rnd(1)
+		queue_boss_hint_laser(false,3,10,ang)
+		queue_boss_fire_laser(false,50,1,ang,0.1+0.05*(rnd(1)),randDirection())
+	end
+end
+
+function wave2Laser()
+	for i=1,3 do
+		local ang = rnd(1)
+		queue_boss_hint_laser(false,3,10,ang)
+		queue_boss_fire_laser(false,150,1,ang,0.1+0.3*(rnd(1)),randDirection())
+	end
+end
+
+function wave3Laser()
+	add_boss_queue("go home",50,1)
+	for i=1,5 do
+		local ang = rnd(1)
+		queue_boss_hint_laser(false,5,10,ang)
+		queue_boss_fire_laser(false,30,1,ang,0.1,randDirection())
+	end
+	queue_boss_hint_laser(false,5,40,ang)
+	queue_boss_fire_laser(false,400,1,ang,2,randDirection())
+end
+
+
+-->8
 --helper functions
+
+function error(message)
+	assert(false, message)
+end
 
 function empty_list(list)
  for i in all(list) do
@@ -1119,6 +1569,10 @@ function fib(steps)
   n += i
  end
  return n
+end
+
+function slow_start_sin(x,d)
+ return sin(x) * (1-(2.71)^(-x*d))
 end
 
 -->8
@@ -1220,22 +1674,22 @@ end
 
 
 __gfx__
-00000000bbbbbbbbb300000000000b00aaaaaaaaa900000000000a0000000000000000000000000000000000000000000000000dd00000000000000dd0000000
-000000003bb3bbb3bbb300000000bb309aa9aaa9aaa900000000aa900000000000000000000000000000000000000000000000deed000000000000daad000000
-000000000bb43bb0bbbb3400000bbb300aaf9aa0aaaa9f00000aaa900000000000000000000000000000000000000000000000deed000000000000daad000000
-0000000003344b30bb34444000bb3340099ffa90aa9ffff000aa99f0000000000000000000000000000000000000000000000d1ee1d0000000000daaaad00000
-0000000000444300b34444440bb3444000fff900a9ffffff0aa9fff00000000000000000000000000000000000000000ddddd19ee91dddddddddd99aa99ddddd
-0000000000444400bbb34400bbb3444400ffff00aaa9ff00aaa9ffff0000000000000000000000000000000000000000deee199ee991eeeddaaaa92aa29aaaad
-0000000000044000bbb300000b344444000ff000aaa900000a9fffff00000000000000000000000000000000000000000deee92ee29eeed00daaa92aa29aaad0
-0000000000040000b300000000000444000f0000a900000000000fff000000000000000000000000000000000000000000dee92ee29eed0000daa92aa29aad00
-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000deeeeeeeed000000daaaaaaaad000
-0000000000a99a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000dee2222eed000000da2aaaaaad000
-000000000a9889a00000000000000000000000000000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaa2222aaad00
-00000000098888900000000000000000000000000000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaaaaaaaaad00
-0000000009888890000000000000000000000000000000000000000000000000000000000000000000000000000000000deeeeeddeeeeed00daaaaaddaaaaad0
-000000000a9889a0000000000000000000000000000000000000000000000000000000000000000000000000000000000deeedd00ddeeed00daaadd00ddaaad0
-0000000000a99a0000000000000000000000000000000000000000000000000000000000000000000000000000000000deedd000000ddeeddaadd000000ddaad
-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ddd0000000000dddddd0000000000ddd
+00000000ddddddddd600000000000d0022222222260000000000020000000000000000000000000000000000000000000000000dd00000000000000dd0000000
+00000000655d5556d55600000000ddd06aa2aaa62aa60000000022200000000000000000000000000000000000000000000000deed000000000000daad000000
+0000000005d55d50d5d55600000dd6500a2aa2a02a2aa600000226a00000000000000000000000000000000000000000000000deed000000000000daad000000
+000000000655d560d55d555600dd556006aa2a602aa2aaa60022aa60000000000000000000000000000000000000000000000d1ee1d0000000000daaaad00000
+00000000005d5500dd55d5560dd5d5d000a2aa0022aa2aa6022a2a200000000000000000000000000000000000000000ddddd19ee91dddddddddd99aa99ddddd
+0000000000655600d5d55600dd65d5d6006aa6002a2aa600226a2a260000000000000000000000000000000000000000deee199ee991eeeddaaaa92aa29aaaad
+0000000000055000d55600000d5655d5000aa0002aa6000002a6aa2a00000000000000000000000000000000000000000deee92ee29eeed00daaa92aa29aaad0
+0000000000066000d6000000000006d500066000260000000000062a000000000000000000000000000000000000000000dee92ee29eed0000daa92aa29aad00
+0660660000000000aaaaaaaa999999998888888800000000000000000000000000000000000000000000000000000000000deeeeeeeed000000daaaaaaaad000
+6886886000a99a00a000000a900000098000000800000000000000000000000000000000000000000000000000000000000dee2222eed000000da2aaaaaad000
+688888600a9889a0a000000a90000009800000080000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaa2222aaad00
+6888886009888890a000000a90000009800000080000000000000000000000000000000000000000000000000000000000deeeeeeeeeed0000daaaaaaaaaad00
+6888886009888890a000000a9000000980000008000000000000000000000000000000000000000000000000000000000deeeeeddeeeeed00daaaaaddaaaaad0
+068886000a9889a0a000000a9000000980000008000000000000000000000000000000000000000000000000000000000deeedd00ddeeed00daaadd00ddaaad0
+0068600000a99a00a000000a900000098000000800000000000000000000000000000000000000000000000000000000deedd000000ddeeddaadd000000ddaad
+0006000000000000aaaaaaaa999999998888888800000000000000000000000000000000000000000000000000000000ddd0000000000dddddd0000000000ddd
 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dd00000000000000dd00000000000000dd0000000
 0000000000cccc0000eeee0000aaaa00000000000000000000000000000000000000000000000000000000dffd000000000000deed000000000000d88d000000
 000000000c1cc1c00e1ee1e00a1aa1a0000000000000000000000000000000000000000000000000000000dffd000000000000deed000000000000d88d000000
@@ -1252,22 +1706,38 @@ __gfx__
 000000000000000000000000000000000000000000000000000000000000000000000000000000000dfffdd00ddfffd00deeedd00ddeeed00d888dd00dd888d0
 00000000000000000000000000000000000000000000000000000000000000000000000000000000dffdd000000ddffddeedd000000ddeedd88dd000000dd88d
 00000000000000000000000000000000000000000000000000000000000000000000000000000000ddd0000000000dddddd0000000000dddddd0000000000ddd
-0000000000000aaaaaa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000aa000000aa00000000999999000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000a0000000000a0000009000000900000000088888800000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000a000000000000a000090000000090000000800000080000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000a000000000000a000900000000009000008000000008000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000a00000000000000a09000000000000900080000000000800000000000000000000000000000000000000000000000000000000000000000000000000
-00000000a00000000000000a09000000000000900080000000000800000000000000000000000000000000000000000000000000000000000000000000000000
-00000000a00000000000000a09000000000000900080000000000800000000000000000000000000000000000000000000000000000000000000000000000000
-00000000a00000000000000a09000000000000900080000000000800000000000000000000000000000000000000000000000000000000000000000000000000
-00000000a00000000000000a09000000000000900080000000000800000000000000000000000000000000000000000000000000000000000000000000000000
-00000000a00000000000000a09000000000000900080000000000800000000000000000000000000000000000000000000000000000000000000000000000000
-000000000a000000000000a000900000000009000008000000008000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000a000000000000a000090000000090000000800000080000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000a0000000000a0000009000000900000000088888800000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000aa000000aa00000000999999000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000aaaaaa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000077777700000000009aaaaa00000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007777cc77770000009999998888000
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003777733cccc3000099aaaaaaaa8800
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c3333333ccc333009a888889999aa90
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c333333ccc333c00aa99ffff99999f0
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccc33333ccc33ccc99ffff999ffff88f
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc3cc3ccc3cc339ff999aaa9999998
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc33cccccc3333f999aaa9aaaaaa99
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc333cccc33339888a999999999aa
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc33333cc33338999999998888999
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc33333ccc3339999a99888888899
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc33333cccc3009aaa99888888ff0
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ccccc333ccccc30099fffffffffff90
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000cccc33cccccc000098899998888900
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c777ccc7770000009988aaaaaa000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000777777000000000099889900000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999999000000000026666600000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004449944499000000222222dddd000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000094449944444900002266666666dd00
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000494444994449990026ddddd22226620
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000049999999999994006622eeee22222e0
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999999994499944422eeee222eeeedde
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099449449444944442ee222666222222d
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009944994444449944e222666266666622
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000049444999444494492ddd622222222266
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004999999999449999d22222222dddd222
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044999999994999992222622ddddddd22
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004444999999944900266622ddddddee0
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000444449999994490022eeeeeeeeeee20
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000044449944994400002dd2222dddd200
+000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000499944499900000022dd666666000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999999000000000022dd2200000
 __gff__
 0000010000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -1278,8 +1748,4 @@ __sfx__
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00020000000000263008240026500e250036501425003650102400363009220036100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000200000865008650086500970009700097000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000034550383503635033350303502d3502c3502a3502a3502b3502c3502c3502e350303503335037350385503855037550375503655033550000000000000000000000000000000000000000000000
+00110000000001825022250272502a2502925026250222501c25019250152501125012250162501c2501e25000000000000000000000000000000000000000000000000000000000000000000000000000000000
