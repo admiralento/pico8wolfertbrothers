@@ -176,6 +176,10 @@ function _update60()
    end_game()
   end
 
+  if (boss.state == "dead") then
+   end_game()
+  end
+
   advance_game_level()
 
  elseif (gamestate == "menu") then
@@ -249,6 +253,8 @@ function advance_game_level()
    --starting fourth phase
    -- 3 hits to move on
    progress_event = 3
+  elseif (gamelevel == 5) then
+   set_boss_action("dying",3,80)
   end
  end
 end
@@ -436,7 +442,7 @@ end
 function update_all_platforms()
  if (gamelevel == 1 or gamelevel == 2) then
   place_platforms_circle(cx,cy,55,1.0)
- elseif (gamelevel == 3) then
+ else
   place_platforms_circle(cx,cy,
    55+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
    slow_start_sin(0.0005*(totalframes-spin_start),1))
@@ -709,12 +715,14 @@ end
 
 function spawn_boss()
  set_boss_state("active")
- set_boss_action("spawning",10,10)
+ set_boss_action("spawning",20,4)
 end
 
 function update_boss()
  if (boss.state == "disabled") then return end
- if (boss.action == "spawning") then
+ if (boss.action == "dying") then
+  run_boss_death()
+ elseif (boss.action == "spawning") then
   run_boss_spawn()
  elseif (boss.action == "floating") then
   run_boss_float()
@@ -744,6 +752,31 @@ function update_boss()
  end
 end
 
+function run_boss_death()
+ --boss flashes in and out every frame
+ if (first_frame()) then
+  boss.state = "active"
+  boss.cachex = boss.x
+  boss.cachey = boss.y
+ end
+ if (move_to_next_frame()) then
+  boss.s = 42
+  boss.x += 2*cos(boss.frames/boss.maxFrameCnt)
+  local c = get_actor_center(boss)
+  if (totalframes % 8 == 0) then
+   gen_firework_particle(c.x,c.y)
+   sfx(0)
+  end
+ else
+  if (move_to_next_cycle()) then
+   boss.x = boss.cachex
+   boss.y = boss.cachey
+  else
+   boss.state = "dead"
+  end
+ end
+end
+
 function run_boss_spawn()
  --boss flashes in and out every frame
  if (first_frame()) then
@@ -758,7 +791,7 @@ function run_boss_spawn()
  else
   if (move_to_next_cycle()) then
   else
-   retrieve_next_action()
+   set_boss_action("floating",120,2)
   end
  end
 end
