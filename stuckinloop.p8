@@ -1393,24 +1393,24 @@ function getStageThreePhases()
 	if (r < 20) then
 		wave3Laser()
 	elseif (r < 40) then
-		add_boss_queue("mad",3,20,1)
-		add_boss_queue("charging",20,15,2)
-		add_boss_queue("mad",3,20,3)
+		add_boss_queue("mad",3,20)
+		queue_boss_charging(false,20,10,50)
+		add_boss_queue("mad",3,20)
 	elseif (r < 60) then
-		add_boss_queue("dash to platform",40,1,1)
-		add_boss_queue("dash to next platform",4,#platforms,2)
+		add_boss_queue("dash to platform",40,1)
+		add_boss_queue("dash to next platform",4,#platforms)
 	elseif (r < 80) then
-		add_boss_queue("ring run",80,1,1)
-		add_boss_queue("dash to platform",40,1,2)
-		add_boss_queue("ring run",80,1,3)
+		add_boss_queue("ring run",80,1)
+		add_boss_queue("dash to platform",40,1)
+		add_boss_queue("ring run",80,1)
 	end
 	if (points > 15) then
-		add_boss_queue("panting",160,2,0)
+		add_boss_queue("panting",160,2)
 	elseif (points > 6) then
 		if (ceil(rnd(10)) == 1) then
-			add_boss_queue("panting",160,2,0)
+			add_boss_queue("panting",160,2)
 		else
-			add_boss_queue("floating",120,2,0)
+			add_boss_queue("floating",120,2)
 		end
 	end
 end
