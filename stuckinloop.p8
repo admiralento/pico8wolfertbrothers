@@ -29,6 +29,8 @@ cy = 63
 prev_button_states = btn()
 spin_start = 0
 
+debug_testing = true
+
 function make_actor(s,x,y,h,w)
  --basic datatype for most objects
 	a={
@@ -173,7 +175,9 @@ function _update60()
   clean_up_dynamics()
 
   if (player.life <= 0) then
-   end_game()
+   if (not(debug_testing)) then
+    end_game()
+   end
   end
 
   if (boss.state == "dead") then
@@ -238,6 +242,7 @@ function advance_game_level()
  if (progress_event <= 0) then
   sfx(6)
   gamelevel += 1
+  points = 0
   if (gamelevel == 2) then
    --starting second phase
    -- 3 hits to move on
@@ -1083,6 +1088,68 @@ function retrieve_next_action()
   elseif (r < 60) then
    add_boss_queue("dash to platform",80,1,1)
    add_boss_queue("dash to next platform",8,#platforms,2)
+  end
+  if (points > 15) then
+   add_boss_queue("panting",160,2,0)
+  elseif (points > 6) then
+   if (ceil(rnd(10)) == 1) then
+    add_boss_queue("panting",160,2,0)
+   else
+    sfx(0)
+    add_boss_queue("floating",120,2,0)
+   end
+  end
+ end
+
+ if (gamelevel == 3 and #boss_queue == 0) then
+  local r = ceil(rnd(80))
+  if (r < 20) then
+   add_boss_queue("hint laser",3,5,1)
+   add_boss_queue("hint laser",3,5,2)
+   add_boss_queue("hint laser",3,5,3)
+  elseif (r < 40) then
+   add_boss_queue("mad",3,15,1)
+   add_boss_queue("charging",20,10,2)
+   add_boss_queue("mad",3,15,3)
+  elseif (r < 60) then
+   add_boss_queue("dash to platform",60,1,1)
+   add_boss_queue("dash to next platform",6,#platforms,2)
+  elseif (r < 80) then
+   add_boss_queue("ring run",120,1,1)
+   add_boss_queue("dash to platform",6,1,2)
+   add_boss_queue("ring run",10-,1,3)
+  end
+  if (points > 15) then
+   add_boss_queue("panting",160,2,0)
+  elseif (points > 6) then
+   if (ceil(rnd(10)) == 1) then
+    add_boss_queue("panting",160,2,0)
+   else
+    sfx(0)
+    add_boss_queue("floating",120,2,0)
+   end
+  end
+ end
+
+ if (gamelevel == 4 and #boss_queue == 0) then
+  local r = ceil(rnd(80))
+  if (r < 20) then
+   add_boss_queue("hint laser",3,3,1)
+   add_boss_queue("hint laser",3,3,2)
+   add_boss_queue("mad",3,5,3)
+   add_boss_queue("hint laser",3,3,4)
+   add_boss_queue("hint laser",3,3,5)
+  elseif (r < 40) then
+   add_boss_queue("mad",3,20,1)
+   add_boss_queue("charging",20,15,2)
+   add_boss_queue("mad",3,20,3)
+  elseif (r < 60) then
+   add_boss_queue("dash to platform",40,1,1)
+   add_boss_queue("dash to next platform",4,#platforms,2)
+  elseif (r < 80) then
+   add_boss_queue("ring run",80,1,1)
+   add_boss_queue("dash to platform",40,1,2)
+   add_boss_queue("ring run",80,1,3)
   end
   if (points > 15) then
    add_boss_queue("panting",160,2,0)
