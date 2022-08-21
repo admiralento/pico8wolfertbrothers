@@ -493,10 +493,10 @@ end
 function animate_to_platform()
  --animate player motion to next platform
  local pcoords = get_platform_coords(player.current_platform)
- player.x += (pcoords.x-player.x) / player.frames
- player.y += (pcoords.y-player.y) / player.frames
+	local c = get_actor_center(player)
+ player.x += (pcoords.x-c.x) / player.frames
+ player.y += (pcoords.y-c.y) / player.frames
  player.frames -= 1
- local c = get_actor_center(player)
  gen_simple_particle(c.x, c.y)
  if (player.frames <= 0) then
   player.state = "static"
@@ -506,8 +506,7 @@ end
 
 function warp_to_platform()
  local pcoords = get_platform_coords(player.current_platform)
- player.x = pcoords.x
- player.y = pcoords.y
+	move_actor_center(player,pcoords.x, pcoords.y)
 end
 
 function damage_player(d)
@@ -689,12 +688,11 @@ end
 function get_platform_coords(index)
  --returns the place where the player should sit above a platform
  local p = platforms[index]
- local pcx = p.x + (p.w*4)
- local pcy = p.y + (p.h*4)
- local angle = atan2(pcx-cx,pcy-cy)
+	local pc = get_actor_center(p)
+ local angle = atan2(p.x-cx,p.y-cy)
  local dx = -player.platform_buffer * cos(angle)
  local dy = -player.platform_buffer * sin(angle)
- return {x=p.x+dx,y=p.y+dy}
+ return {x=pc.x+dx,y=pc.y+dy}
 end
 
 --desert
@@ -877,6 +875,15 @@ function gen_laser(x,y,angle,c)
  end
 end
 
+function gen_destroy_laser(x,y,angle,c)
+ for i=1,16 do
+		d = rnd(128)
+  p = make_particle(x+d*cos(angle),y+d*sin(angle),c)
+  apply_angle_mag_dynamic(p,rnd(1),0.4)
+  p.frames = 5
+ end
+end
+
 function gen_hint_laser(x,y,angle,c)
  for i=1,32 do
   d = rnd(128)
@@ -930,6 +937,8 @@ function update_boss()
   run_boss_fire_laser()
 	elseif (boss.action == "static fire") then
   run_boss_static_fire()
+	elseif (boss.action == "destroy platforms") then
+  run_boss_destroy_platforms()
  else
   sfx(0)
   retrieve_next_action()
@@ -1294,6 +1303,25 @@ function run_boss_static_fire()
  end
 end
 
+function run_boss_destroy_platforms()
+ --shoots lasers and eliminates platforms
+ if (move_to_next_frame()) then
+		boss.s = 46
+		local c = get_actor_center(boss)
+		for n in all(boss.platforms_to_destroy) do
+		 local platformCoords = get_platform_coords(n)
+		 local angle = atan2(platformCoords.x - c.x, platformCoords.y - c.y)
+	  gen_destroy_laser(c.x,c.y,angle,9)
+	 end
+ else
+  if (move_to_next_cycle()) then
+  else
+			--call function to destroy platforms
+   retrieve_next_action()
+  end
+ end
+end
+
 function on_cycle_start()
  return (boss.frames == boss.maxFrameCnt)
 end
@@ -1336,8 +1364,9 @@ end
 
 function getStageOnePhases()
 	local r = ceil(rnd(60))
-	if (r < 20) then
-		wave1Laser()
+	if (r < 60) then
+		add_boss_queue("destroy platforms",80,1)
+		--wave1Laser()
 	elseif (r < 40) then
 		add_boss_queue("go home",80,1)
 		queue_boss_static_firing_plattern(false,100,4,true,5)
