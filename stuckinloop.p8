@@ -1317,7 +1317,7 @@ function retrieve_next_action()
  --randomly selects the next attack or attack pattern
 
  local c = get_actor_center(boss)
- if (distance_to_center(c.x, c.y) > 64) then
+ if (distance_to_center(c.x, c.y) > 50) then
   set_boss_action("go home",40,1)
   return
  end
@@ -1332,7 +1332,6 @@ function retrieve_next_action()
  if (not(queued_boss_action())) then
 		getRandomAction()
 	end
-
 end
 
 function getStageOnePhases()
