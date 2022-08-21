@@ -11,7 +11,7 @@ spr_player_dash = 34
 spr_boss = 14
 
 --global varibles
-platform_cnt = 20
+platform_cnt = 15
 starting_platform = 1
 points = 0
 actors = {}
@@ -21,10 +21,13 @@ dynamics = {}
 player = {}
 boss_queue = {}
 gamestate = "menu"
+gamelevel = 1
+progress_event = 1
 totalframes = 0
 cx = 63
 cy = 63
 prev_button_states = btn()
+spin_start = 0
 
 function make_actor(s,x,y,h,w)
  --basic datatype for most objects
@@ -82,7 +85,7 @@ end
 function make_boss()
  --boss class
  b = make_actor(spr_boss,cx-8,cy-8,2,2)
- b.state = "static"
+ b.state = "disabled"
  b.action = "static"
  b.frames = 0
  b.maxFrameCnt = 0
@@ -130,11 +133,10 @@ function start_game()
  player = make_player(0,0,1,1)
  boss = make_boss()
  gamestate = "game"
+ gamelevel = 1
+ progress_event = 5 -- five sand tiles
  points = 0
 
- add_boss_queue("floating",120,2,-1)
- add_boss_queue("dash to platform",80,1,-1)
- add_boss_queue("dash to next platform",8,#platforms,-1)
 end
 
 function end_game()
@@ -159,16 +161,22 @@ function _update60()
   remove_desert_if_touching()
   update_all_platforms()
 		update_player()
-	 update_boss()
+
+  if (boss.state != "disabled") then
+   update_boss()
+   check_boss_collision()
+  end
+
 		update_dynamics()
 		check_dynamic_collisions()
-	 check_boss_collision()
 		add_desert_if_missing()
   clean_up_dynamics()
 
   if (player.life <= 0) then
    end_game()
   end
+
+  advance_game_level()
 
  elseif (gamestate == "menu") then
   if(btn() > 0) then
@@ -222,6 +230,29 @@ function record_button_states()
  prev_button_states = btn()
 end
 
+function advance_game_level()
+ if (progress_event <= 0) then
+  sfx(6)
+  gamelevel += 1
+  if (gamelevel == 2) then
+   --starting second phase
+   -- 3 hits to move on
+   spawn_boss()
+   progress_event = 3
+  elseif (gamelevel == 3) then
+   --starting thrid phase
+   -- 3 hits to move on
+   -- loop starts moving
+   spin_start = totalframes
+   progress_event = 3
+  elseif (gamelevel == 4) then
+   --starting fourth phase
+   -- 3 hits to move on
+   progress_event = 3
+  end
+ end
+end
+
 -->8
 --draw
 
@@ -231,7 +262,7 @@ function _draw()
 	 draw_particles()
 		draw_actors()
   print(boss.action,0,16)
-  print(boss.platform,0,24)
+  print(#boss_queue,0,24)
 	 print("sCORE: "..tostring(points),0,5,10,11)
  elseif (gamestate == "menu") then
   rectfill(0,0,128,128,1)
@@ -252,7 +283,9 @@ end
 
 function draw_actors()
  for a in all(actors) do
-  spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
+  if (a.state != "disabled") then
+   spr(a.s,a.x,a.y,a.w,a.h,a.fh,a.fv)
+  end
  end
 end
 
@@ -401,10 +434,14 @@ function add_platforms(n)
 end
 
 function update_all_platforms()
- place_platforms_circle(cx,cy,
-  56+5*sin(0.0005*totalframes*7),
-  sin(0.0005*totalframes)
- )
+ if (gamelevel == 1 or gamelevel == 2) then
+  place_platforms_circle(cx,cy,55,1.0)
+ elseif (gamelevel == 3) then
+  place_platforms_circle(cx,cy,
+   55+5*slow_start_sin(0.0035*(totalframes-spin_start),1),
+   slow_start_sin(0.0005*(totalframes-spin_start),1))
+ end
+
  animate_all_platforms()
  rotate_all_platform_spr()
 end
@@ -526,6 +563,12 @@ function remove_desert_if_touching()
   platforms[player.current_platform].spriteset = {1,2,3}
   sfx(2)
   points += 1
+  if (gamelevel == 1) then
+   progress_event -= 1
+   if (progress_event > 0) then
+    add_platforms(1)
+   end
+  end
  end
 end
 
@@ -664,8 +707,16 @@ end
 -->8
 --boss
 
+function spawn_boss()
+ set_boss_state("active")
+ set_boss_action("spawning",10,10)
+end
+
 function update_boss()
- if (boss.action == "floating") then
+ if (boss.state == "disabled") then return end
+ if (boss.action == "spawning") then
+  run_boss_spawn()
+ elseif (boss.action == "floating") then
   run_boss_float()
  elseif (boss.action == "mad") then
   run_boss_mad()
@@ -690,6 +741,25 @@ function update_boss()
  else
   sfx(0)
   retrieve_next_action()
+ end
+end
+
+function run_boss_spawn()
+ --boss flashes in and out every frame
+ if (first_frame()) then
+  boss.state = "active"
+ end
+ if (move_to_next_frame()) then
+  if (boss.frames % boss.maxFrameCnt < (boss.maxFrameCnt/2)) then
+   boss.s = 14
+  else
+   boss.s = 48
+  end
+ else
+  if (move_to_next_cycle()) then
+  else
+   retrieve_next_action()
+  end
  end
 end
 
@@ -832,7 +902,7 @@ function run_boss_go_home()
  end
  if (move_to_next_frame()) then
   boss.s = 14
-  move_actor_const_accel(boss,cx,cy,boss.frames, boss.maxFrameCnt, true)
+  move_actor_dash_pause(boss,cx,cy,boss.frames, boss.maxFrameCnt, true)
  else
   if (move_to_next_cycle()) then
    set_boss_action("floating",120,1)
@@ -961,14 +1031,40 @@ end
 function retrieve_next_action()
  --randomly selects the next attack or attack pattern
 
- if (queued_boss_action()) then
-  -- if action is in queue, it is run and the rnd is aborted
-  return
- end
-
  local c = get_actor_center(boss)
  if (distance_to_center(c.x, c.y) > 64) then
   set_boss_action("go home",40,1)
+  return
+ end
+
+ if (gamelevel == 2 and #boss_queue == 0) then
+  local r = ceil(rnd(60))
+  if (r < 20) then
+   add_boss_queue("hint laser",3,10,1)
+   add_boss_queue("hint laser",3,10,2)
+   add_boss_queue("hint laser",3,10,3)
+  elseif (r < 40) then
+   add_boss_queue("mad",3,10,1)
+   add_boss_queue("charging",20,5,2)
+   add_boss_queue("mad",3,10,3)
+  elseif (r < 60) then
+   add_boss_queue("dash to platform",80,1,1)
+   add_boss_queue("dash to next platform",8,#platforms,2)
+  end
+  if (points > 15) then
+   add_boss_queue("panting",160,2,0)
+  elseif (points > 6) then
+   if (ceil(rnd(10)) == 1) then
+    add_boss_queue("panting",160,2,0)
+   else
+    sfx(0)
+    add_boss_queue("floating",120,2,0)
+   end
+  end
+ end
+
+ if (queued_boss_action()) then
+  -- if action is in queue, it is run and the rnd is aborted
   return
  end
 
@@ -1053,7 +1149,6 @@ function check_boss_collision()
  if (do_actors_collide(player,boss) and player.invincibleTimer <= 0) then
   if (boss.state == "weak") then
    set_boss_action("hit",10,10)
-   points += 5;
    damage_boss(1)
   elseif (boss.state == "active") then
    damage_player(1)
@@ -1064,6 +1159,9 @@ end
 function damage_boss(d)
  sfx(4)
  boss.life -= d
+ if (gamelevel > 1) then
+  progress_event -= 1
+ end
 end
 
 -->8
@@ -1118,6 +1216,10 @@ function fib(steps)
   n += i
  end
  return n
+end
+
+function slow_start_sin(x,d)
+ return sin(x) * (1-(2.71)^(-x*d))
 end
 
 -->8
@@ -1229,3 +1331,4 @@ __sfx__
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00020000000000263008240026500e250036501425003650102400363009220036100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000200000865008650086500970009700097000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00110000000001825022250272502a2502925026250222501c25019250152501125012250162501c2501e25000000000000000000000000000000000000000000000000000000000000000000000000000000000
