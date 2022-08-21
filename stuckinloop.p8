@@ -32,7 +32,7 @@ cy = 63
 prev_button_states = btn()
 spin_start = 0
 
-debug_testing = false
+debug_testing = true
 
 function make_actor(s,x,y,w,h)
  --basic datatype for most objects
@@ -333,6 +333,10 @@ function _draw()
 		if (debug_testing) then
 	  print(boss.action,0,16)
 	  print(#boss_queue,0,24)
+			local c = get_actor_center(boss)
+			print(c.x,0,120)
+			print(",",8,120)
+			print(c.y,16,120)
 		 print("sCORE: "..tostring(points),0,5,10,11)
 		end
 
@@ -887,7 +891,6 @@ end
 --boss
 
 function spawn_boss()
- set_boss_state("active")
  set_boss_action("spawning",20,4)
 end
 
@@ -927,8 +930,7 @@ end
 
 function run_boss_death()
  --boss flashes in and out every frame
- if (first_frame()) then
-  boss.state = "active"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -952,9 +954,6 @@ end
 
 function run_boss_spawn()
  --boss flashes in and out every frame
- if (first_frame()) then
-  boss.state = "active"
- end
  if (move_to_next_frame()) then
   if (boss.frames % boss.maxFrameCnt < (boss.maxFrameCnt/2)) then
    boss.s = 14
@@ -964,15 +963,14 @@ function run_boss_spawn()
  else
   if (move_to_next_cycle()) then
   else
-   set_boss_action("floating",120,2)
+   retrieve_next_action()
   end
  end
 end
 
 function run_boss_float()
  --boss floats in a figure eight each cycle
- if (first_frame()) then
-  boss.state = "active"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -992,8 +990,7 @@ end
 
 function run_boss_mad()
  --boss shakes and spits a fireball each cycle
- if (first_frame()) then
-  boss.state = "active"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -1012,20 +1009,32 @@ function run_boss_mad()
  end
 end
 
+function queue_boss_charging(isImediate,frames,cycles,chargeradius)
+	local param = {}
+	if (chargeradius != nil) then param.chargeradius = chargeradius end
+
+	if (isImediate == true) then
+		add_boss_queue("charging",frames,cycles,param,1);
+	else
+		add_boss_queue("charging",frames,cycles,param);
+	end
+end
+
 function run_boss_charging()
  --boss charges around in short bursts
- if (first_frame()) then
-  boss.state = "active"
-  boss.cachex = boss.x + 20*cos(rnd())
-  boss.cachey = boss.y + 20*sin(rnd())
+	if (boss.chargeradius == nil) then
+		error("boss charge radius is not defined")
+	end
+ if (on_cycle_start()) then
+  boss.cachex = boss.x + boss.chargeradius*cos(rnd())
+  boss.cachey = boss.y + boss.chargeradius*sin(rnd())
  end
  if (move_to_next_frame()) then
   boss.s = 46
-  move_actor_dash_pause(boss,boss.cachex,boss.cachey,boss.frames, boss.maxFrameCnt, false)
+  move_actor_dash_pause(boss, boss.cachex, boss.cachey,
+			boss.frames, boss.maxFrameCnt, false)
  else
   if (move_to_next_cycle()) then
-   boss.cachex = boss.x + 20*cos(rnd())
-   boss.cachey = boss.y + 20*sin(rnd())
   else
    retrieve_next_action()
   end
@@ -1034,14 +1043,12 @@ end
 
 function run_boss_dash_rnd_platform()
  --boss goes to a rnd platform each cycle
- if (first_frame()) then
+ if (on_cycle_start()) then
   local index = ceil(rnd(#platforms))
   local t = get_platform_coords(index)
+		boss.platform = index
   boss.targetx = t.x
   boss.targety = t.y
-  boss.state = "active"
-  boss.platform = index
-  boss.direction = randDirection()
  end
  if (move_to_next_frame()) then
   boss.s = 14
@@ -1054,18 +1061,33 @@ function run_boss_dash_rnd_platform()
  end
 end
 
+function queue_boss_dash_nxt_platform(isImediate,frames,cycles,direction)
+	local param = {}
+	if (direction != nil) then param.direction = direction end
+
+	if (isImediate == true) then
+		add_boss_queue("dash to next platform",frames,cycles,param,1);
+	else
+		add_boss_queue("dash to next platform",frames,cycles,param);
+	end
+end
+
 function run_boss_dash_nxt_platform()
  --boss goes to the next nearest platform, then in consectutive order for each cycle
- if (first_frame()) then
-  if (first_cycle()) then
-   local c = get_actor_center(boss)
-   boss.platform = find_closest_platform_index(c.x, c.y)
-  end
+	if (boss.direction == nil) then
+		error("boss direction is not defined")
+	end
+	if (on_cycle_start()) then
+		if (on_first_cycle()) then
+			--locate closest platform
+		 local c = get_actor_center(boss)
+		 boss.platform = find_closest_platform_index(c.x, c.y)
+	 end
+		--set target to next platform
   boss.platform = ((boss.platform - 1 + boss.direction) % #platforms) + 1
   local t = get_platform_coords(boss.platform)
   boss.targetx = t.x
   boss.targety = t.y
-  boss.state = "active"
  end
  if (move_to_next_frame()) then
   boss.s = 14
@@ -1081,7 +1103,7 @@ end
 
 function run_boss_ring_run()
  --boss runs in a circle each cycle
- if (first_frame()) then
+ if (on_cycle_start()) then
   local c = get_actor_center(boss)
   boss.radius = distance_to_center(c.x,c.y)
   boss.angle = atan2(c.x-cx,c.y-cy)
@@ -1103,12 +1125,9 @@ end
 
 function run_boss_go_home()
  --boss moves to the center of the screen each cycle
- if (first_frame()) then
-  boss.state = "active"
- end
  if (move_to_next_frame()) then
   boss.s = 14
-  move_actor_dash_pause(boss,cx,cy,boss.frames, boss.maxFrameCnt, true)
+  move_actor_dash_pause(boss,cx,cy,boss.frames,boss.maxFrameCnt,true)
  else
   if (move_to_next_cycle()) then
   else
@@ -1119,8 +1138,7 @@ end
 
 function run_boss_panting()
  --boss floats in a weak state each cycle
- if (first_frame()) then
-  boss.state = "weak"
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
  end
@@ -1144,9 +1162,6 @@ end
 
 function run_boss_hit()
  --boss flashes each cycle
- if (first_frame()) then
-  boss.state = "invincible"
- end
  if (move_to_next_frame()) then
   if (boss.frames % boss.maxFrameCnt < boss.maxFrameCnt/2) then
    boss.s = 42
@@ -1161,19 +1176,23 @@ function run_boss_hit()
  end
 end
 
+function queue_boss_hint_laser(isImediate,frames,cycles,angle)
+	local param = {}
+	if (angle != nil) then param.angle = angle end
+
+	if (isImediate == true) then
+		add_boss_queue("hint laser",frames,cycles,param,1);
+	else
+		add_boss_queue("hint laser",frames,cycles,param);
+	end
+end
+
 function run_boss_hint_laser()
  --boss generates particles in a direction each cycle
- if (first_frame()) then
-  boss.state = "active"
+	if (boss.angle == nil) then error("boss angle not definded") end
+ if (on_cycle_start()) then
   boss.cachex = boss.x
   boss.cachey = boss.y
-  if (first_cycle()) then
-   local t = get_platform_coords(ceil(rnd(#platforms)))
-   boss.targetx = t.x
-   boss.targety = t.y
-   boss.direction = randDirection()
-   boss.angle = atan2(boss.targetx-boss.cachex,boss.targety-boss.cachey)
-  end
  end
  if (move_to_next_frame()) then
   boss.s = 46
@@ -1181,25 +1200,36 @@ function run_boss_hint_laser()
   local c = get_actor_center(boss)
   gen_hint_laser(c.x,c.y,boss.angle,10)
  else
-  if (move_to_next_cycle()) then
-   boss.x = boss.cachex
-   boss.y = boss.cachey
-  else
-   add_boss_queue("fire laser",120,1,1)
+		boss.x = boss.cachex
+		boss.y = boss.cachey
+  if (not(move_to_next_cycle())) then
    retrieve_next_action()
   end
  end
 end
 
+function queue_boss_fire_laser(isImediate,frames,cycles,a,sweep,direction)
+	local param = {}
+	if (a != nil) then param.angle = a end
+	if (sweep != nil) then param.sweep = sweep end
+	if (direction != nil) then param.direction = direction end
+
+	if (isImediate == true) then
+		add_boss_queue("fire laser",frames,cycles,param,1);
+	else
+		add_boss_queue("fire laser",frames,cycles,param);
+	end
+end
+
 function run_boss_fire_laser()
  --boss shakes and trys to apply damage using the angle from hint laser each cycle
- if (first_frame()) then
-  boss.state = "active"
- end
+	if (boss.angle == nil) then error("boss angle not definded") end
+	if (boss.direction == nil) then error("boss direction not definded") end
+	if (boss.sweep == nil) then error("boss sweep not definded") end
  if (move_to_next_frame()) then
   boss.s = 42
   sfx(5)
-  local angle = boss.angle + 0.05*boss.direction*(1-boss.frames/boss.maxFrameCnt)
+  local angle = boss.angle + boss.sweep*boss.direction*(1-boss.frames/boss.maxFrameCnt)
   local c = get_actor_center(boss)
   gen_laser(c.x,c.y,angle,7)
   if (raycast_to_actor(c.x,c.y,angle,player) and player.invincibleTimer <= 0) then
@@ -1214,11 +1244,11 @@ function run_boss_fire_laser()
  end
 end
 
-function first_frame()
+function on_cycle_start()
  return (boss.frames == boss.maxFrameCnt)
 end
 
-function first_cycle()
+function on_first_cycle()
  return (boss.cycles == boss.maxCycleCnt)
 end
 
@@ -1242,100 +1272,103 @@ function retrieve_next_action()
   return
  end
 
- if (gamelevel == 2 and #boss_queue == 0) then
-  local r = ceil(rnd(60))
-  if (r < 20) then
-   add_boss_queue("hint laser",3,10,1)
-   add_boss_queue("hint laser",3,10,2)
-   add_boss_queue("hint laser",3,10,3)
-  elseif (r < 40) then
-   add_boss_queue("mad",3,10,1)
-   add_boss_queue("charging",20,5,2)
-   add_boss_queue("mad",3,10,3)
-  elseif (r < 60) then
-   add_boss_queue("dash to platform",80,1,1)
-   add_boss_queue("dash to next platform",8,#platforms,2)
-  end
-  if (points > 15) then
-   add_boss_queue("panting",160,2,0)
-  elseif (points > 6) then
-   if (ceil(rnd(10)) == 1) then
-    add_boss_queue("panting",160,2,0)
-   else
-    sfx(0)
-    add_boss_queue("floating",120,2,0)
-   end
-  end
- end
+	if (#boss_queue == 0) then
+		if (gamelevel == 2) then getStageOnePhases()
+		elseif (gamelevel == 3) then getStageTwoPhases()
+		elseif (gamelevel == 4) then getStageThreePhases()
+		end
+	end
 
- if (gamelevel == 3 and #boss_queue == 0) then
-  local r = ceil(rnd(80))
-  if (r < 20) then
-   add_boss_queue("hint laser",3,5,1)
-   add_boss_queue("hint laser",3,5,2)
-   add_boss_queue("hint laser",3,5,3)
-  elseif (r < 40) then
-   add_boss_queue("mad",3,15,1)
-   add_boss_queue("charging",20,10,2)
-   add_boss_queue("mad",3,15,3)
-  elseif (r < 60) then
-   add_boss_queue("dash to platform",60,1,1)
-   add_boss_queue("dash to next platform",6,#platforms,2)
-  elseif (r < 80) then
-   add_boss_queue("ring run",120,1,1)
-   add_boss_queue("dash to platform",6,1,2)
-   add_boss_queue("ring run",120,1,3)
-  end
-  if (points > 15) then
-   add_boss_queue("panting",160,2,0)
-  elseif (points > 6) then
-   if (ceil(rnd(10)) == 1) then
-    add_boss_queue("panting",160,2,0)
-   else
-    sfx(0)
-    add_boss_queue("floating",120,2,0)
-   end
-  end
- end
+ if (not(queued_boss_action())) then
+		getRandomAction()
+	end
 
- if (gamelevel == 4 and #boss_queue == 0) then
-  local r = ceil(rnd(80))
-  if (r < 20) then
-   add_boss_queue("hint laser",3,3,1)
-   add_boss_queue("hint laser",3,3,2)
-   add_boss_queue("mad",3,5,3)
-   add_boss_queue("hint laser",3,3,4)
-   add_boss_queue("hint laser",3,3,5)
-  elseif (r < 40) then
-   add_boss_queue("mad",3,20,1)
-   add_boss_queue("charging",20,15,2)
-   add_boss_queue("mad",3,20,3)
-  elseif (r < 60) then
-   add_boss_queue("dash to platform",40,1,1)
-   add_boss_queue("dash to next platform",4,#platforms,2)
-  elseif (r < 80) then
-   add_boss_queue("ring run",80,1,1)
-   add_boss_queue("dash to platform",40,1,2)
-   add_boss_queue("ring run",80,1,3)
-  end
-  if (points > 15) then
-   add_boss_queue("panting",160,2,0)
-  elseif (points > 6) then
-   if (ceil(rnd(10)) == 1) then
-    add_boss_queue("panting",160,2,0)
-   else
-    sfx(0)
-    add_boss_queue("floating",120,2,0)
-   end
-  end
- end
+end
 
- if (queued_boss_action()) then
-  -- if action is in queue, it is run and the rnd is aborted
-  return
- end
+function getStageOnePhases()
+	local r = ceil(rnd(60))
+	if (r < 20) then
+		wave3Laser()
+	elseif (r < 40) then
+		add_boss_queue("mad",3,10)
+		queue_boss_charging(false,20,5,20)
+		add_boss_queue("mad",3,10)
+	elseif (r < 60) then
+		add_boss_queue("dash to platform",80,1)
+		queue_boss_dash_nxt_platform(false,8,#platforms,randDirection())
+	end
+	if (points > 15) then
+		add_boss_queue("panting",160,2)
+	elseif (points > 6) then
+		if (ceil(rnd(10)) == 1) then
+			add_boss_queue("panting",160,2)
+		else
+			sfx(0)
+			add_boss_queue("floating",120,2)
+		end
+	end
+end
 
- while true do
+function getStageTwoPhases()
+	local r = ceil(rnd(80))
+	if (r < 20) then
+		wave2Laser()
+	elseif (r < 40) then
+		add_boss_queue("mad",3,15)
+		queue_boss_charging(false,20,10,30)
+		add_boss_queue("mad",3,15)
+	elseif (r < 60) then
+		local l = randDirection()
+		add_boss_queue("dash to platform",60,1)
+		queue_boss_dash_nxt_platform(false,6,#platforms,l)
+		queue_boss_dash_nxt_platform(false,6,#platforms,-l)
+	elseif (r < 80) then
+		add_boss_queue("ring run",120,1)
+		add_boss_queue("dash to platform",60,1)
+		add_boss_queue("ring run",120,1)
+	end
+	if (points > 15) then
+		add_boss_queue("panting",160,2)
+	elseif (points > 6) then
+		if (ceil(rnd(10)) == 1) then
+			add_boss_queue("panting",160,2)
+		else
+			sfx(0)
+			add_boss_queue("floating",120,2)
+		end
+	end
+end
+
+function getStageThreePhases()
+	local r = ceil(rnd(80))
+	if (r < 20) then
+		wave3Laser()
+	elseif (r < 40) then
+		add_boss_queue("mad",3,20,1)
+		add_boss_queue("charging",20,15,2)
+		add_boss_queue("mad",3,20,3)
+	elseif (r < 60) then
+		add_boss_queue("dash to platform",40,1,1)
+		add_boss_queue("dash to next platform",4,#platforms,2)
+	elseif (r < 80) then
+		add_boss_queue("ring run",80,1,1)
+		add_boss_queue("dash to platform",40,1,2)
+		add_boss_queue("ring run",80,1,3)
+	end
+	if (points > 15) then
+		add_boss_queue("panting",160,2,0)
+	elseif (points > 6) then
+		if (ceil(rnd(10)) == 1) then
+			add_boss_queue("panting",160,2,0)
+		else
+			sfx(0)
+			add_boss_queue("floating",120,2,0)
+		end
+	end
+end
+
+function getRandomAction()
+	while true do
   local r = ceil(rnd(8))
   if (r == 1) then
    set_boss_action("floating",120,1)
@@ -1377,16 +1410,22 @@ function retrieve_next_action()
  end
 end
 
-function set_boss_state(state)
- boss.state = state
-end
-
 function set_boss_action(action, maxFrameCnt, cycles)
  boss.action = action
  boss.maxFrameCnt = maxFrameCnt
  boss.frames = maxFrameCnt
  boss.cycles = cycles
  boss.maxCycleCnt = cycles
+
+	if (boss.action == "panting") then
+		boss.state = "weak"
+	elseif (boss.action == "hit"
+						or boss.action == "dying"
+					 or boss.action == "spawning") then
+		boss.state = "invincible"
+	else
+		boss.state = "active"
+	end
 end
 
 function queued_boss_action()
@@ -1394,17 +1433,28 @@ function queued_boss_action()
   set_boss_action(boss_queue[1].action,
    boss_queue[1].maxFrameCnt,
    boss_queue[1].cycles)
+
+		if (boss_queue[1].param != nil) then
+			if(boss_queue[1].param.angle != nil) then boss.angle = boss_queue[1].param.angle end
+			if(boss_queue[1].param.chargeradius != nil) then boss.chargeradius = boss_queue[1].param.chargeradius end
+			if(boss_queue[1].param.direction != nil) then boss.direction = boss_queue[1].param.direction end
+			if(boss_queue[1].param.sweep != nil) then boss.sweep = boss_queue[1].param.sweep end
+	 else
+			sfx(0)
+		end
+
   del(boss_queue, boss_queue[1])
   return true
  end
  return false
 end
 
-function add_boss_queue(action, maxFrameCnt, cycles, index)
+function add_boss_queue(action, maxFrameCnt, cycles, param, index)
  bq = { action = action,
         maxFrameCnt = maxFrameCnt,
-        cycles = cycles}
- if (index <= 0) then
+        cycles = cycles,
+							 param = param }
+ if (index == nil) then
   add(boss_queue, bq)
  else
   add(boss_queue, bq, index)
@@ -1432,7 +1482,42 @@ function damage_boss(d)
 end
 
 -->8
+--boss attack
+
+function wave1Laser()
+	for i=1,3 do
+		local ang = rnd(1)
+		queue_boss_hint_laser(false,3,10,ang)
+		queue_boss_fire_laser(false,50,1,ang,0.1+0.05*(rnd(1)),randDirection())
+	end
+end
+
+function wave2Laser()
+	for i=1,3 do
+		local ang = rnd(1)
+		queue_boss_hint_laser(false,3,10,ang)
+		queue_boss_fire_laser(false,150,1,ang,0.1+0.3*(rnd(1)),randDirection())
+	end
+end
+
+function wave3Laser()
+	add_boss_queue("go home",50,1)
+	for i=1,5 do
+		local ang = rnd(1)
+		queue_boss_hint_laser(false,5,10,ang)
+		queue_boss_fire_laser(false,30,1,ang,0.1,randDirection())
+	end
+	queue_boss_hint_laser(false,5,40,ang)
+	queue_boss_fire_laser(false,400,1,ang,2,randDirection())
+end
+
+
+-->8
 --helper functions
+
+function error(message)
+	assert(false, message)
+end
 
 function empty_list(list)
  for i in all(list) do
