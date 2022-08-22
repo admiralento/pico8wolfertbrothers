@@ -218,9 +218,6 @@ elseif (gamestate == "game") then
 		check_dynamic_collisions()
 		add_desert_if_missing()
   clean_up_dynamics()
-
-
-		if (totalframes % 400 == 0) then spawn_bombs() end
 		update_bombs()
 
   if (player.life <= 0) then
@@ -298,17 +295,17 @@ function advance_game_level()
    --starting second phase
    -- 3 hits to move on
    spawn_boss()
-   progress_event = 3
+   progress_event = 1
   elseif (gamelevel == 3) then
    --starting thrid phase
    -- 3 hits to move on
    -- loop starts moving
    spin_start = totalframes
-   progress_event = 3
+   progress_event = 1
   elseif (gamelevel == 4) then
    --starting fourth phase
    -- 3 hits to move on
-   progress_event = 3
+   progress_event = 1
   elseif (gamelevel == 5) then
    set_boss_action("dying",3,80)
   end
@@ -483,6 +480,7 @@ function update_player()
   animate_to_platform()
  elseif (player.state == "static") then
   warp_to_platform()
+		player.s = 33
  end
  if (player.invincibleTimer > 0) then
   if (player.invincibleTimer % 8 <= 3) then
@@ -894,7 +892,7 @@ function gen_laser(x,y,angle,c)
 end
 
 function gen_destroy_laser(x,y,angle,c)
- for i=1,16 do
+ for i=1,8 do
 		d = rnd(128)
   p = make_particle(x+d*cos(angle),y+d*sin(angle),c)
   apply_angle_mag_dynamic(p,rnd(1),0.4)
@@ -993,7 +991,7 @@ function run_boss_spawn()
   if (boss.frames % boss.maxFrameCnt < (boss.maxFrameCnt/2)) then
    boss.s = 14
   else
-   boss.s = 48
+   boss.s = 10
   end
  else
   if (move_to_next_cycle()) then
@@ -1200,7 +1198,7 @@ function run_boss_hit()
   if (boss.frames % boss.maxFrameCnt < boss.maxFrameCnt/2) then
    boss.s = 42
   else
-   boss.s = 48
+   boss.s = 10
   end
  else
   if (move_to_next_cycle()) then
@@ -1296,6 +1294,8 @@ function run_boss_static_fire()
 	if (boss.checkerFireQuantity == nil) then error("boss checkerFireQuantity not definded") end
 
  if (move_to_next_frame()) then
+		boss.x += 0.1*cos(boss.frames/boss.maxFrameCnt)
+  boss.y += 0.1*sin(boss.frames/boss.maxFrameCnt)
   if (true) then
 			if (boss.frames == boss.maxFrameCnt - 1) then
 				sfx(0)
@@ -1371,7 +1371,7 @@ function retrieve_next_action()
  --randomly selects the next attack or attack pattern
 
  local c = get_actor_center(boss)
- if (distance_to_center(c.x, c.y) > 50) then
+ if (distance_to_center(c.x, c.y) > 60) then
   set_boss_action("go home",40,1)
   return
  end
@@ -1389,16 +1389,19 @@ function retrieve_next_action()
 end
 
 function getStageOnePhases()
-	local r = ceil(rnd(60))
+	local r = ceil(rnd(80))
 	if (r < 20) then
-		--add_boss_queue("destroy platforms",80,1)
 		wave1Laser()
 	elseif (r < 40) then
 		add_boss_queue("go home",80,1)
-		queue_boss_static_firing_plattern(false,100,4,true,5)
+		queue_boss_static_firing_plattern(false,140,4,true,5)
 	elseif (r < 60) then
 		add_boss_queue("dash to platform",80,1)
 		queue_boss_dash_nxt_platform(false,8,#platforms,randDirection())
+	elseif (r < 80) then
+		spawn_bombs()
+		add_boss_queue("mad",3,15)
+		add_boss_queue("floating",120,1)
 	end
 
 	if (points > 15) then
@@ -1414,7 +1417,7 @@ function getStageOnePhases()
 end
 
 function getStageTwoPhases()
-	local r = ceil(rnd(80))
+	local r = ceil(rnd(120))
 	if (r < 20) then
 		wave2Laser()
 	elseif (r < 40) then
@@ -1422,15 +1425,25 @@ function getStageTwoPhases()
 		queue_boss_charging(false,20,10,30)
 		add_boss_queue("mad",3,15)
 	elseif (r < 60) then
+		add_boss_queue("go home",80,1)
+		queue_boss_static_firing_plattern(false,140,4,true,6)
+	elseif (r < 80) then
 		local l = randDirection()
 		add_boss_queue("dash to platform",60,1)
 		queue_boss_dash_nxt_platform(false,6,#platforms,l)
 		queue_boss_dash_nxt_platform(false,6,#platforms,-l)
-	elseif (r < 80) then
+	elseif (r < 100) then
+		add_boss_queue("dash to platform",60,1)
 		add_boss_queue("ring run",120,1)
 		add_boss_queue("dash to platform",60,1)
 		add_boss_queue("ring run",120,1)
+	elseif (r < 120) then
+		spawn_bombs()
+		spawn_bombs()
+		add_boss_queue("mad",3,15)
+		add_boss_queue("floating",120,1)
 	end
+
 	if (points > 15) then
 		add_boss_queue("panting",160,2)
 	elseif (points > 6) then
@@ -1443,28 +1456,39 @@ function getStageTwoPhases()
 end
 
 function getStageThreePhases()
-	local r = ceil(rnd(80))
+	local r = ceil(rnd(120))
 	if (r < 20) then
 		wave3Laser()
 	elseif (r < 40) then
-		add_boss_queue("mad",3,20,1)
-		add_boss_queue("charging",20,15,2)
-		add_boss_queue("mad",3,20,3)
+		add_boss_queue("mad",3,20)
+		queue_boss_charging(false,20,10,40)
+		add_boss_queue("mad",3,20)
 	elseif (r < 60) then
-		add_boss_queue("dash to platform",40,1,1)
-		add_boss_queue("dash to next platform",4,#platforms,2)
+		add_boss_queue("dash to platform",40,1)
+		add_boss_queue("dash to next platform",4,#platforms)
 	elseif (r < 80) then
-		add_boss_queue("ring run",80,1,1)
-		add_boss_queue("dash to platform",40,1,2)
-		add_boss_queue("ring run",80,1,3)
+		add_boss_queue("dash to platform",60,1)
+		add_boss_queue("ring run",100,1)
+		add_boss_queue("dash to platform",60,1)
+		add_boss_queue("ring run",100,1)
+	elseif (r < 100) then
+		add_boss_queue("go home",80,1)
+		queue_boss_static_firing_plattern(false,150,8,true,7)
+	elseif (r < 120) then
+		spawn_bombs()
+		spawn_bombs()
+		spawn_bombs()
+		add_boss_queue("mad",3,15)
+		add_boss_queue("floating",120,1)
 	end
+
 	if (points > 15) then
-		add_boss_queue("panting",160,2,0)
+		add_boss_queue("panting",160,2)
 	elseif (points > 6) then
 		if (ceil(rnd(10)) == 1) then
-			add_boss_queue("panting",160,2,0)
+			add_boss_queue("panting",160,2)
 		else
-			add_boss_queue("floating",120,2,0)
+			add_boss_queue("floating",120,2)
 		end
 	end
 end
@@ -1724,7 +1748,7 @@ function update_bombs()
  if (bomb_frame_counter > 0) then
   bomb_frame_counter -= 1
 		if (bomb_frame_counter == 0) then
-		 set_boss_action("destroy platforms",80,1)
+		 set_boss_action("destroy platforms",20,1)
 	 end
  end
 end
