@@ -111,7 +111,7 @@ end
 
 function collision_functions()
  for b in all(bullets) do
-  collision = check_collision(b,dragon_part_list[1],1,2)
+  collision = bullet_collide(b,dragon_part_list[1])
   if collision then
    del(bullets,b)
    del(actors,b)
@@ -119,7 +119,7 @@ function collision_functions()
  end
 end
 
-function check_collision(sp1,sp2,sp1size,sp2size)
+function check_collision_beta(sp1,sp2,sp1size,sp2size)
 
  --initializing variables
  sp1x = sp1.x
@@ -146,6 +146,22 @@ function check_collision(sp1,sp2,sp1size,sp2size)
   end
  end
 
+ return collision
+end
+
+function bullet_collide(bull,hit)
+ coll_list = {}
+ add(coll_list,bull.x + 3)
+ add(coll_list,bull.x + 4)
+ 
+ collision = false
+ 
+ if pget(bull.x + 3, bull.y - 1) == 0 and pget(bull.x + 4, bull.y - 1) then
+  collision = false
+ else
+  collision = true
+ end
+ 
  return collision
 end
 -->8
