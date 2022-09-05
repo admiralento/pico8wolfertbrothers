@@ -11,39 +11,44 @@ function _update60()
 collision_functions()
 move_plane()
 bullet_routines()
-move_dragon(dragonx,dragony)
+dvd_movement()
+dragon_hp_updates()
 end
 
 function _draw()
 cls()
 draw_actors()
+border_draw()
 end
 -->8
 --fighter plane and bullets
 planex = 64
 planey = 110
+plane_speed = 1
 prev_btn = 0
 bullet_count = 0
+
 
 function make_plane()
  plane = make_actor(1,planex,planey,1,1)
  plane.health = 5
 end
 
+
 function move_plane()
- if btn(➡️,true) then planex += 1 end
- if btn(⬅️,true) then planex -= 1 end
- if btn(⬇️,true) then planey += 1 end
- if btn(⬆️,true) then planey -= 1 end
- if planex > 120 then
-  planex = 120
- elseif planex < 0 then
-  planex = 0
+ if btn(➡️,true) then planex += plane_speed end
+ if btn(⬅️,true) then planex -= plane_speed end
+ if btn(⬇️,true) then planey += plane_speed end
+ if btn(⬆️,true) then planey -= plane_speed end
+ if planex > 120 - border_thickness then
+  planex = 120 - border_thickness
+ elseif planex < border_thickness then
+  planex = border_thickness
  end
- if planey < 0 then
-  planey = 0
- elseif planey > 120 then
-  planey = 120
+ if planey < border_thickness then
+  planey = border_thickness
+ elseif planey > 120 - border_thickness then
+  planey = 120 - border_thickness
  end
  plane.x = planex
  plane.y = planey
@@ -55,6 +60,7 @@ function bullet_routines()
  move_player_bullets()
  --handle bullet damage calculations here
 end
+
 
 function spawn_player_bullet()
  if btn(❎) and btn(❎) != prev_btn then
@@ -71,6 +77,7 @@ function spawn_player_bullet()
  prev_btn = btn(❎)
 end
 
+
 function move_player_bullets()
  bullets_to_remove = {}
  for b in all(bullets) do
@@ -84,11 +91,29 @@ function move_player_bullets()
   del(actors,r)
  end
 end
+
+
+function bullet_collide(bull,hit)
+ coll_list = {}
+ add(coll_list,bull.x + 3)
+ add(coll_list,bull.x + 4)
+ 
+ collision = false
+ 
+ if pget(bull.x + 3, bull.y - 1) == 0 and pget(bull.x + 4, bull.y - 1) then
+  collision = false
+ else
+  collision = true
+  dragon_part_list[1].health -= 5
+ end
+ 
+ return collision
+end
 -->8
 --actor handling
-
 actors = {}
 bullets = {}
+
 
 function make_actor(sprite,x,y,width,height)
  a = {
@@ -103,11 +128,13 @@ function make_actor(sprite,x,y,width,height)
  return a
 end
 
+
 function draw_actors()
  for a in all(actors) do
   spr(a.sprite,a.x,a.y,a.height,a.width)
  end
 end
+
 
 function collision_functions()
  for b in all(bullets) do
@@ -119,8 +146,8 @@ function collision_functions()
  end
 end
 
-function check_collision_beta(sp1,sp2,sp1size,sp2size)
 
+function check_collision_beta(sp1,sp2,sp1size,sp2size)
  --initializing variables
  sp1x = sp1.x
  sp1y = sp1.y
@@ -149,26 +176,13 @@ function check_collision_beta(sp1,sp2,sp1size,sp2size)
  return collision
 end
 
-function bullet_collide(bull,hit)
- coll_list = {}
- add(coll_list,bull.x + 3)
- add(coll_list,bull.x + 4)
- 
- collision = false
- 
- if pget(bull.x + 3, bull.y - 1) == 0 and pget(bull.x + 4, bull.y - 1) then
-  collision = false
- else
-  collision = true
- end
- 
- return collision
-end
 -->8
 --dragon handling
-dragonx = 1
-dragony = 1
+dragonx = 60
+dragony = 20
 dragon_part_list = {}
+dragon_alive = true
+
 
 function make_dragon()
  head = make_dragon_head()
@@ -179,12 +193,14 @@ function make_dragon()
  end
 end
 
+
 function make_dragon_head()
  head = make_actor(46,dragonx,dragony,2,2)
  head.health = 100
  head.type = "head"
  return head
 end
+
 
 function make_dragon_tail()
  tail_list = {}
@@ -196,15 +212,18 @@ function make_dragon_tail()
  return tail_list
 end
 
+
 function move_dragon(x,y)
  move_dragon_head(x,y)
  move_dragon_tail()
 end
 
+
 function move_dragon_head(x,y)
  head.x = x
  head.y = y
 end
+
 
 function move_dragon_tail()
  for a in all(dragon_part_list) do
@@ -217,6 +236,94 @@ function move_dragon_tail()
   previousx = a.x
   previousy = a.y
  end
+end
+
+
+function dragon_hp_updates()
+ if dragon_alive then
+  if dragon_part_list[1].health <= 0 then
+  kill_dragon()
+  end
+ end
+end
+
+
+function kill_dragon()
+ for i in all(dragon_part_list) do
+  del(dragon_part_list,i)
+  del(actors,i)
+ end
+ dragon_alive = false
+end
+
+
+function dragon_random_movement()
+ ranx = ceil(rnd(2))
+ rany = ceil(rnd(2))
+ 
+ if not(ranx == 1) then
+  ranx = -1
+ else
+  ranx = 1
+ end
+ 
+ if not(rany == 1) then
+  rany = -1
+ else
+  rany = 1
+ end
+  
+ if (head.x + ranx) < 1 or (head.x + ranx) > 112 then
+  ranx = 0
+ end
+ if (head.y + rany) < 1 or (head.y + rany) > 112 then
+  rany = 0
+ end
+ 
+ move_dragon(head.x + ranx,head.y + rany)
+end
+
+
+dvdx = 1
+dvdy = 1
+function dvd_movement()
+ move_dragon(head.x + dvdx, head.y + dvdy)
+ if head.x >= 112 then
+  dvdx = -1
+ end
+ if head.y >= 64 then
+  dvdy = -1
+ end
+ 
+ if head.x <= 0 then
+  dvdx = 1
+ end
+ if head.y <= 0 then
+  dvdy = 1
+ end
+end
+-->8
+--border creation
+border_color = 6
+border_thickness = 2
+
+function border_draw()
+ for i = 1,border_thickness do
+ -- line(0,i-1,128,i-1,border_color)
+  line(0,128-i,128,128-i,border_color)
+  line(i-1,0,i-1,128,border_color)
+  line(128-i,0,128-i,128,border_color)
+ end
+end
+-->8
+--dragon attacks
+attack_list = {}
+
+function make_attack(name,frames)
+ a = {
+  name = name,
+  frames = frames
+  }
 end
 __gfx__
 00000000000770000007700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000699999960000
